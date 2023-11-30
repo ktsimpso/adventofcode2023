@@ -1,4 +1,4 @@
-use std::{fs::File, io::Read, marker::PhantomData, path::PathBuf};
+use std::{marker::PhantomData, path::PathBuf};
 
 use anyhow::Result;
 use clap::{
@@ -8,6 +8,7 @@ use clap::{
 use tap::Tap;
 
 use super::{
+    file_system::file_to_string,
     parse::{StringParse, StringParser},
     problem::{Problem, ProblemResult},
 };
@@ -158,11 +159,4 @@ pub fn flag_arg(name: &'static str, short: char, help: &str) -> Arg {
         .help(help.to_string())
         .num_args(0)
         .action(ArgAction::SetTrue)
-}
-
-pub fn file_to_string(file_name: &PathBuf) -> Result<String, std::io::Error> {
-    File::open(file_name).and_then(|mut file| {
-        let mut result = String::new();
-        file.read_to_string(&mut result).map(|_| result)
-    })
 }

@@ -1,6 +1,7 @@
 #![feature(lazy_cell)]
 
 mod days;
+mod fetch_input;
 mod libs;
 
 use anyhow::Result;
@@ -26,30 +27,39 @@ fn main() -> Result<()> {
         .map(|(_, command)| command.get_subcommand())
         .collect::<Vec<_>>();
 
+    let download_command = fetch_input::command();
+    let download_command_name = download_command.get_name().to_string();
+
     let matches = ClapCommand::new("Advent of Code 2023")
         .version(VERSION)
         .about("Run the advent of code problems from this main program")
         .arg_required_else_help(true)
         .subcommand_required(true)
+        .subcommand(download_command)
         .subcommands(subcommands)
         .get_matches();
 
-    commands
-        .into_iter()
-        .filter_map(|(name, command)| {
-            matches.subcommand_matches(name).map(|args| {
-                println!("=============Running {:}=============", command.get_name());
-                let now = Instant::now();
-                let result = command.run(args);
-                let elapsed = now.elapsed();
-                result.map(|r| (r, elapsed))
-            })
-        })
-        .collect::<Result<Vec<(ProblemResult, Duration)>>>()
-        .map(|results| {
-            results.into_iter().for_each(|(result, elapsed)| {
-                println!("{}", result);
-                println!("Took {:#?} to run", elapsed)
-            })
+    matches
+        .subcommand_matches(&download_command_name)
+        .map(fetch_input::run)
+        .unwrap_or_else(|| {
+            commands
+                .into_iter()
+                .filter_map(|(name, command)| {
+                    matches.subcommand_matches(name).map(|args| {
+                        println!("=============Running {:}=============", command.get_name());
+                        let now = Instant::now();
+                        let result = command.run(args);
+                        let elapsed = now.elapsed();
+                        result.map(|r| (r, elapsed))
+                    })
+                })
+                .collect::<Result<Vec<(ProblemResult, Duration)>>>()
+                .map(|results| {
+                    results.into_iter().for_each(|(result, elapsed)| {
+                        println!("{}", result);
+                        println!("Took {:#?} to run", elapsed)
+                    })
+                })
         })
 }
