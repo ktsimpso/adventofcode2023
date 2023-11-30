@@ -13,19 +13,15 @@ use super::{
 };
 
 pub trait CliArgs {
-    type Output;
-
     fn get_args() -> Vec<Arg>;
 
-    fn parse_output(args: &ArgMatches) -> Self::Output;
+    fn parse_output(args: &ArgMatches) -> Self;
 }
 
 impl<T> CliArgs for T
 where
     T: Args + FromArgMatches,
 {
-    type Output = T;
-
     fn get_args() -> Vec<Arg> {
         T::augment_args(ClapCommand::new(""))
             .get_arguments()
@@ -33,7 +29,7 @@ where
             .collect()
     }
 
-    fn parse_output(args: &ArgMatches) -> Self::Output {
+    fn parse_output(args: &ArgMatches) -> Self {
         T::from_arg_matches(args).expect("Valid arguments")
     }
 }
@@ -51,24 +47,24 @@ pub struct Part<T> {
     arg: T,
 }
 
-pub struct CliProblem<I, A, B, P>
+pub struct CliProblem<I, A, P>
 where
     I: StringParse,
-    A: CliArgs<Output = B>,
-    P: Problem<I, B>,
+    A: CliArgs,
+    P: Problem<I, A>,
 {
     name: &'static str,
     help: &'static str,
     file_help: &'static str,
-    parts: Vec<Part<B>>,
-    _marker: PhantomData<(I, A, P)>,
+    parts: Vec<Part<A>>,
+    _marker: PhantomData<(I, P)>,
 }
 
-impl<I, A, B, P> CliProblem<I, A, B, P>
+impl<I, A, P> CliProblem<I, A, P>
 where
     I: StringParse,
-    A: CliArgs<Output = B>,
-    P: Problem<I, B>,
+    A: CliArgs,
+    P: Problem<I, A>,
 {
     pub fn new(name: &'static str, help: &'static str, file_help: &'static str) -> Self {
         CliProblem {
@@ -80,17 +76,17 @@ where
         }
     }
 
-    pub fn with_part(mut self, help: &'static str, arg: B) -> Self {
+    pub fn with_part(mut self, help: &'static str, arg: A) -> Self {
         self.parts.push(Part { help, arg });
         self
     }
 }
 
-impl<I, A, B, P> Command for CliProblem<I, A, B, P>
+impl<I, A, P> Command for CliProblem<I, A, P>
 where
     I: StringParse,
-    A: CliArgs<Output = B>,
-    P: Problem<I, B>,
+    A: CliArgs,
+    P: Problem<I, A>,
 {
     fn run(&self, args: &ArgMatches) -> Result<ProblemResult> {
         self.parts
