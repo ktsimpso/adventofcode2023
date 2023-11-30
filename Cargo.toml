@@ -1,0 +1,14 @@
+[package]
+name = "adventofcode2023"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.75"
+ariadne = "0.3.0"
+chumsky = "1.0.0-alpha.6"
+clap = { version = "4.4.8", features = ["derive", "string"] }
+itertools = "0.12.0"
+tap = "1.0.1"
