@@ -30,7 +30,7 @@ struct Input(Vec<String>);
 
 impl StringParse for Input {
     fn parse<'a>() -> impl Parser<'a, &'a str, Self, extra::Err<Rich<'a, char>>> {
-        let charset = ('a'..='z').chain(('0'..='9')).collect::<String>();
+        let charset = ('a'..='z').chain('0'..='9').collect::<String>();
         parse_lines(
             one_of(charset).repeated().at_least(1).collect::<String>(),
             0,
@@ -89,7 +89,7 @@ impl Problem<Input, CommandLineArguments> for Day01 {
                 .chain(words.into_iter())
                 .collect::<Vec<_>>()
         } else {
-            digits.into_iter().collect::<Vec<_>>()
+            digits
         };
 
         input
