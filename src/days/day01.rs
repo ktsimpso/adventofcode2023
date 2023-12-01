@@ -1,37 +1,54 @@
 use crate::libs::{
     cli::{CliProblem, Command},
-    parse::{parse_between_blank_lines, parse_lines, parse_usize, StringParse},
+    parse::{parse_lines, StringParse},
     problem::Problem,
 };
-use chumsky::{error::Rich, extra, Parser};
+use chumsky::{
+    error::Rich,
+    extra,
+    primitive::{end, one_of},
+    text::newline,
+    IterParser, Parser,
+};
 use clap::Args;
+use itertools::Itertools;
 use std::cell::LazyCell;
-use tap::Tap;
 
 pub const DAY_01: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     Box::new(
         CliProblem::<Input, CommandLineArguments, Day01>::new(
             "day01",
-            "The first day!",
-            "The file help",
+            "Finds the first numeric digit and last numeric digit and concatenates them for each line. Then sums the values of each line from the resulting number",
+            "newline delimited strings with at least 2 digits per line.",
         )
-        .with_part("part1 help", CommandLineArguments { n: 1 })
-        .with_part("part2 help", CommandLineArguments { n: 3 }),
+        .with_part("Calibration values only use literal digits on the default input", CommandLineArguments { words: false })
+        .with_part("Calibration values can use both literal, and spelt out digits on the default input", CommandLineArguments { words: true }),
     )
 });
 
-struct Input(Vec<Vec<usize>>);
+struct Input(Vec<String>);
 
 impl StringParse for Input {
     fn parse<'a>() -> impl Parser<'a, &'a str, Self, extra::Err<Rich<'a, char>>> {
-        parse_between_blank_lines(parse_lines(parse_usize(), 1)).map(Input)
+        let charset = ('a'..='z').chain(('0'..='9')).collect::<String>();
+        parse_lines(
+            one_of(charset).repeated().at_least(1).collect::<String>(),
+            0,
+        )
+        .then_ignore(newline().or_not())
+        .then_ignore(end())
+        .map(Input)
     }
 }
 
 #[derive(Args)]
 struct CommandLineArguments {
-    #[arg(short, long = "number", help = "The number of elves to sum")]
-    n: usize,
+    #[arg(
+        short,
+        long,
+        help = "Include spelt digits when determining the calibration value"
+    )]
+    words: bool,
 }
 
 struct Day01 {}
@@ -40,15 +57,64 @@ impl Problem<Input, CommandLineArguments> for Day01 {
     type Output = usize;
 
     fn run(input: Input, arguments: &CommandLineArguments) -> Self::Output {
+        let digits = vec![
+            ("1", "1"),
+            ("2", "2"),
+            ("3", "3"),
+            ("4", "4"),
+            ("5", "5"),
+            ("6", "6"),
+            ("7", "7"),
+            ("8", "8"),
+            ("9", "9"),
+            ("0", "0"),
+        ];
+
+        let words = vec![
+            ("one", "1"),
+            ("two", "2"),
+            ("three", "3"),
+            ("four", "4"),
+            ("five", "5"),
+            ("six", "6"),
+            ("seven", "7"),
+            ("eight", "8"),
+            ("nine", "9"),
+            ("zero", "0"),
+        ];
+
+        let charset = if arguments.words {
+            digits
+                .into_iter()
+                .chain(words.into_iter())
+                .collect::<Vec<_>>()
+        } else {
+            digits.into_iter().collect::<Vec<_>>()
+        };
+
         input
             .0
             .iter()
-            .map(|bag| bag.into_iter().sum())
-            .collect::<Vec<usize>>()
-            .tap_mut(|sums| sums.sort())
-            .tap_mut(|sums| sums.reverse())
-            .into_iter()
-            .take(arguments.n)
+            .map(|word| {
+                let first = charset
+                    .iter()
+                    .filter_map(|(pattern, value)| {
+                        word.find(pattern).map(|index| (index, value.to_string()))
+                    })
+                    .sorted_by(|(index1, _), (index2, _)| index1.cmp(index2))
+                    .map(|(_, value)| value)
+                    .take(1);
+                let second = charset
+                    .iter()
+                    .filter_map(|(pattern, value)| {
+                        word.rfind(pattern).map(|index| (index, value.to_string()))
+                    })
+                    .sorted_by(|(index1, _), (index2, _)| index2.cmp(index1))
+                    .map(|(_, value)| value)
+                    .take(1);
+
+                usize::from_str_radix(&first.chain(second).join(""), 10).expect("Valid integer")
+            })
             .sum()
     }
 }
