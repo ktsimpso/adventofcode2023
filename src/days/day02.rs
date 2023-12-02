@@ -6,19 +6,18 @@ use crate::libs::{
 use chumsky::{
     error::Rich,
     extra,
-    primitive::{end, just, one_of},
+    primitive::{end, just},
     text::newline,
     IterParser, Parser,
 };
-use clap::Args;
-use itertools::Itertools;
+use clap::{Args, ValueEnum};
 use std::cell::LazyCell;
 
 pub const DAY_02: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     Box::new(
         CliProblem::<Input, CommandLineArguments, Day02>::new("day02", "Finds out information about the 3 color cube game.", "Each line should have a game id followed by a number of semicolon separated draws of the game")
-            .with_part("Sums the game ids of valid games", CommandLineArguments {})
-            ,
+            .with_part("Sums the game ids of valid games", CommandLineArguments { stat: GameStat::Valid})
+            .with_part("Sums the power of each game", CommandLineArguments { stat: GameStat::Power}),
     )
 });
 
@@ -59,8 +58,17 @@ impl StringParse for Input {
     }
 }
 
+#[derive(ValueEnum, Clone)]
+enum GameStat {
+    Valid,
+    Power,
+}
+
 #[derive(Args)]
-struct CommandLineArguments {}
+struct CommandLineArguments {
+    #[arg(short, long, help = "The stat to look for")]
+    stat: GameStat,
+}
 
 struct Day02 {}
 
@@ -68,13 +76,31 @@ impl Problem<Input, CommandLineArguments> for Day02 {
     type Output = usize;
 
     fn run(input: Input, arguments: &CommandLineArguments) -> Self::Output {
-        input
-            .0
-            .iter()
-            .filter(|game| valid_game(game))
-            .map(|game| game.id)
-            .sum()
+        let input = input.0.iter();
+        match arguments.stat {
+            GameStat::Valid => input
+                .filter(|game| valid_game(game))
+                .map(|game| game.id)
+                .sum(),
+            GameStat::Power => input.map(|game| game_power(game)).sum(),
+        }
     }
+}
+
+fn game_power(game: &Game) -> usize {
+    let blue = min_possible(game, &Color::Blue);
+    let red = min_possible(game, &Color::Red);
+    let green = min_possible(game, &Color::Green);
+    blue * red * green
+}
+
+fn min_possible(game: &Game, target_color: &Color) -> usize {
+    game.draws
+        .iter()
+        .flat_map(|draw| draw.iter().filter(|(_, color)| color == target_color))
+        .map(|(count, _)| *count)
+        .max()
+        .unwrap_or(0)
 }
 
 fn valid_game(game: &Game) -> bool {
