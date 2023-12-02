@@ -6,7 +6,7 @@ mod libs;
 
 use anyhow::Result;
 use clap::Command as ClapCommand;
-use days::day01;
+use days::{day01, day02};
 use std::{
     cell::LazyCell,
     time::{Duration, Instant},
@@ -17,7 +17,7 @@ use crate::libs::{cli::Command, problem::ProblemResult};
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 fn main() -> Result<()> {
-    let commands: Vec<(&str, LazyCell<Box<dyn Command>>)> = vec![day01::DAY_01]
+    let commands: Vec<(&str, LazyCell<Box<dyn Command>>)> = vec![day01::DAY_01, day02::DAY_02]
         .into_iter()
         .map(|command| (command.get_name(), command))
         .collect();
