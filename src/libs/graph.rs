@@ -5,6 +5,17 @@ const CARDINAL_DIRECTIONS: [PointDirection; 4] = [
     PointDirection::Up,
 ];
 
+const RADIAL_DIRECTIONS: [PointDirection; 8] = [
+    PointDirection::Down,
+    PointDirection::DownLeft,
+    PointDirection::DownRight,
+    PointDirection::Left,
+    PointDirection::Right,
+    PointDirection::Up,
+    PointDirection::UpLeft,
+    PointDirection::UpRight,
+];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct BoundedPoint {
     pub x: usize,
@@ -23,6 +34,13 @@ impl BoundedPoint {
 
     pub fn into_iter_cardinal_adjacent(self) -> CardinalAdjacentIterator {
         CardinalAdjacentIterator {
+            point: self,
+            index: 0,
+        }
+    }
+
+    pub fn into_iter_radial_adjacent(self) -> RadialAdjacentIterator {
+        RadialAdjacentIterator {
             point: self,
             index: 0,
         }
@@ -64,6 +82,50 @@ impl BoundedPoint {
                 if self.x < self.max_x {
                     Some(BoundedPoint {
                         x: self.x + 1,
+                        ..self
+                    })
+                } else {
+                    None
+                }
+            }
+            PointDirection::UpRight => {
+                if self.y > 0 && self.x < self.max_x {
+                    Some(BoundedPoint {
+                        x: self.x + 1,
+                        y: self.y - 1,
+                        ..self
+                    })
+                } else {
+                    None
+                }
+            }
+            PointDirection::UpLeft => {
+                if self.y > 0 && self.x > 0 {
+                    Some(BoundedPoint {
+                        x: self.x - 1,
+                        y: self.y - 1,
+                        ..self
+                    })
+                } else {
+                    None
+                }
+            }
+            PointDirection::DownRight => {
+                if self.y < self.max_y && self.x < self.max_x {
+                    Some(BoundedPoint {
+                        x: self.x + 1,
+                        y: self.y + 1,
+                        ..self
+                    })
+                } else {
+                    None
+                }
+            }
+            PointDirection::DownLeft => {
+                if self.y < self.max_y && self.x > 0 {
+                    Some(BoundedPoint {
+                        x: self.x - 1,
+                        y: self.y + 1,
                         ..self
                     })
                 } else {
@@ -121,6 +183,10 @@ impl BoundedPoint {
                     BoundedPoint { x: 0, ..self }
                 }
             }
+            PointDirection::UpRight => todo!(),
+            PointDirection::UpLeft => todo!(),
+            PointDirection::DownRight => todo!(),
+            PointDirection::DownLeft => todo!(),
         }
     }
 }
@@ -136,7 +202,11 @@ pub enum RotationDegrees {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum PointDirection {
     Up,
+    UpRight,
+    UpLeft,
     Down,
+    DownRight,
+    DownLeft,
     Left,
     Right,
 }
@@ -157,6 +227,10 @@ impl PointDirection {
             PointDirection::Down => PointDirection::Up,
             PointDirection::Left => PointDirection::Right,
             PointDirection::Right => PointDirection::Left,
+            PointDirection::UpRight => PointDirection::DownLeft,
+            PointDirection::UpLeft => PointDirection::DownRight,
+            PointDirection::DownRight => PointDirection::UpLeft,
+            PointDirection::DownLeft => PointDirection::DownRight,
         }
     }
 
@@ -166,6 +240,10 @@ impl PointDirection {
             PointDirection::Down => PointDirection::Left,
             PointDirection::Left => PointDirection::Up,
             PointDirection::Right => PointDirection::Down,
+            PointDirection::UpRight => todo!(),
+            PointDirection::UpLeft => todo!(),
+            PointDirection::DownRight => todo!(),
+            PointDirection::DownLeft => todo!(),
         }
     }
 
@@ -175,6 +253,10 @@ impl PointDirection {
             PointDirection::Down => PointDirection::Right,
             PointDirection::Left => PointDirection::Down,
             PointDirection::Right => PointDirection::Up,
+            PointDirection::UpRight => todo!(),
+            PointDirection::UpLeft => todo!(),
+            PointDirection::DownRight => todo!(),
+            PointDirection::DownLeft => todo!(),
         }
     }
 }
@@ -207,6 +289,29 @@ impl Iterator for CardinalAdjacentIterator {
             return None;
         }
         let mut result = self.point.get_adjacent(&CARDINAL_DIRECTIONS[self.index]);
+        self.index += 1;
+
+        result = match result {
+            None => self.next(),
+            _ => result,
+        };
+        result
+    }
+}
+
+pub struct RadialAdjacentIterator {
+    point: BoundedPoint,
+    index: usize,
+}
+
+impl Iterator for RadialAdjacentIterator {
+    type Item = BoundedPoint;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= RADIAL_DIRECTIONS.len() {
+            return None;
+        }
+        let mut result = self.point.get_adjacent(&RADIAL_DIRECTIONS[self.index]);
         self.index += 1;
 
         result = match result {
