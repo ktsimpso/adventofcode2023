@@ -137,56 +137,42 @@ impl BoundedPoint {
 
     pub fn get_adjacent_wrapping(self, point_direction: &PointDirection) -> BoundedPoint {
         match point_direction {
-            PointDirection::Up => {
-                if self.y > 0 {
-                    BoundedPoint {
-                        y: self.y - 1,
-                        ..self
-                    }
-                } else {
-                    BoundedPoint {
-                        y: self.max_y,
-                        ..self
-                    }
-                }
-            }
-            PointDirection::Down => {
-                if self.y < self.max_y {
-                    BoundedPoint {
-                        y: self.y + 1,
-                        ..self
-                    }
-                } else {
-                    BoundedPoint { y: 0, ..self }
-                }
-            }
-            PointDirection::Left => {
-                if self.x > 0 {
-                    BoundedPoint {
-                        x: self.x - 1,
-                        ..self
-                    }
-                } else {
-                    BoundedPoint {
-                        x: self.max_x,
-                        ..self
-                    }
-                }
-            }
-            PointDirection::Right => {
-                if self.x < self.max_x {
-                    BoundedPoint {
-                        x: self.x + 1,
-                        ..self
-                    }
-                } else {
-                    BoundedPoint { x: 0, ..self }
-                }
-            }
-            PointDirection::UpRight => todo!(),
-            PointDirection::UpLeft => todo!(),
-            PointDirection::DownRight => todo!(),
-            PointDirection::DownLeft => todo!(),
+            PointDirection::Up => BoundedPoint {
+                y: if self.y > 0 { self.y - 1 } else { self.max_y },
+                ..self
+            },
+            PointDirection::Down => BoundedPoint {
+                y: if self.y < self.max_y { self.y + 1 } else { 0 },
+                ..self
+            },
+            PointDirection::Left => BoundedPoint {
+                x: if self.x > 0 { self.x - 1 } else { self.max_x },
+                ..self
+            },
+            PointDirection::Right => BoundedPoint {
+                x: if self.x < self.max_x { self.x + 1 } else { 0 },
+                ..self
+            },
+            PointDirection::UpRight => BoundedPoint {
+                x: if self.x < self.max_x { self.x + 1 } else { 0 },
+                y: if self.y > 0 { self.y - 1 } else { self.max_y },
+                ..self
+            },
+            PointDirection::UpLeft => BoundedPoint {
+                x: if self.x > 0 { self.x - 1 } else { self.max_x },
+                y: if self.y > 0 { self.y - 1 } else { self.max_y },
+                ..self
+            },
+            PointDirection::DownRight => BoundedPoint {
+                x: if self.x < self.max_x { self.x + 1 } else { 0 },
+                y: if self.y < self.max_y { self.y + 1 } else { 0 },
+                ..self
+            },
+            PointDirection::DownLeft => BoundedPoint {
+                x: if self.x > 0 { self.x - 1 } else { self.max_x },
+                y: if self.y < self.max_y { self.y + 1 } else { 0 },
+                ..self
+            },
         }
     }
 }
@@ -240,10 +226,11 @@ impl PointDirection {
             PointDirection::Down => PointDirection::Left,
             PointDirection::Left => PointDirection::Up,
             PointDirection::Right => PointDirection::Down,
-            PointDirection::UpRight => todo!(),
-            PointDirection::UpLeft => todo!(),
-            PointDirection::DownRight => todo!(),
-            PointDirection::DownLeft => todo!(),
+            // this only kind of makes sense, might want cardinal and radial versions of this function
+            PointDirection::UpRight => PointDirection::DownRight,
+            PointDirection::UpLeft => PointDirection::UpRight,
+            PointDirection::DownRight => PointDirection::DownLeft,
+            PointDirection::DownLeft => PointDirection::UpLeft,
         }
     }
 
@@ -253,10 +240,11 @@ impl PointDirection {
             PointDirection::Down => PointDirection::Right,
             PointDirection::Left => PointDirection::Down,
             PointDirection::Right => PointDirection::Up,
-            PointDirection::UpRight => todo!(),
-            PointDirection::UpLeft => todo!(),
-            PointDirection::DownRight => todo!(),
-            PointDirection::DownLeft => todo!(),
+            // ditto for here
+            PointDirection::UpRight => PointDirection::UpLeft,
+            PointDirection::UpLeft => PointDirection::DownLeft,
+            PointDirection::DownRight => PointDirection::UpRight,
+            PointDirection::DownLeft => PointDirection::DownRight,
         }
     }
 }

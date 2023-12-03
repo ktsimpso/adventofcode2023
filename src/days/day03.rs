@@ -1,18 +1,21 @@
 use crate::libs::{
     cli::{CliProblem, Command},
     graph::BoundedPoint,
-    parse::{parse_lines, parse_usize, StringParse},
+    parse::{parse_lines, StringParse},
     problem::Problem,
 };
 use chumsky::{
     error::Rich,
     extra,
-    primitive::{end, just, one_of},
+    primitive::{choice, end, just, one_of},
     text::newline,
     IterParser, Parser,
 };
 use clap::{Args, ValueEnum};
-use std::{cell::LazyCell, ops::Bound};
+use std::{
+    cell::LazyCell,
+    collections::{BTreeSet, HashMap},
+};
 
 pub const DAY_03: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     Box::new(
@@ -23,7 +26,15 @@ pub const DAY_03: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
         )
         .with_part(
             "Sums all the valid part numbers in the schematic",
-            CommandLineArguments {},
+            CommandLineArguments {
+                part_stat: PartStats::ValidParts,
+            },
+        )
+        .with_part(
+            "Finds the gear ratio of all gears (*) in the schematic and sums them",
+            CommandLineArguments {
+                part_stat: PartStats::GearRatio,
+            },
         ),
     )
 });
@@ -53,17 +64,18 @@ enum Symbol {
 
 impl StringParse for Input {
     fn parse<'a>() -> impl Parser<'a, &'a str, Self, extra::Err<Rich<'a, char>>> {
-        let symbols = just("*")
-            .to(Symbol::Star)
-            .or(just("&").to(Symbol::Ampersand))
-            .or(just("%").to(Symbol::Percent))
-            .or(just("$").to(Symbol::Dollar))
-            .or(just("#").to(Symbol::Hash))
-            .or(just("@").to(Symbol::At))
-            .or(just("+").to(Symbol::Plus))
-            .or(just("=").to(Symbol::Equal))
-            .or(just("/").to(Symbol::Slash))
-            .or(just("-").to(Symbol::Minus));
+        let symbols = choice((
+            just("*").to(Symbol::Star),
+            just("&").to(Symbol::Ampersand),
+            just("%").to(Symbol::Percent),
+            just("$").to(Symbol::Dollar),
+            just("#").to(Symbol::Hash),
+            just("@").to(Symbol::At),
+            just("+").to(Symbol::Plus),
+            just("=").to(Symbol::Equal),
+            just("/").to(Symbol::Slash),
+            just("-").to(Symbol::Minus),
+        ));
         let item = one_of('0'..='9')
             .map(|value| Item::Number(value))
             .or(symbols.map(|symbol| Item::Symbol(symbol)))
@@ -75,8 +87,17 @@ impl StringParse for Input {
     }
 }
 
+#[derive(ValueEnum, Clone)]
+enum PartStats {
+    ValidParts,
+    GearRatio,
+}
+
 #[derive(Args)]
-struct CommandLineArguments {}
+struct CommandLineArguments {
+    #[arg(short, long, help = "The stat to look for")]
+    part_stat: PartStats,
+}
 
 struct Day03 {}
 
@@ -86,15 +107,55 @@ impl Problem<Input, CommandLineArguments> for Day03 {
     fn run(input: Input, arguments: &CommandLineArguments) -> Self::Output {
         let max_y = input.0.len() - 1;
         let max_x = input.0.first().map(|row| row.len()).unwrap_or(0) - 1;
-        find_numbers(&input.0, max_y, max_x)
+        let part_numbers = find_numbers(&input.0, max_y, max_x)
             .into_iter()
             .filter(|numbers| {
                 numbers
                     .into_iter()
                     .any(|number| adjacent_to_symbol(number, &input.0))
             })
-            .map(|numbers| combine_numbers(&numbers, &input.0))
-            .sum()
+            .collect::<Vec<_>>();
+
+        match arguments.part_stat {
+            PartStats::ValidParts => part_numbers
+                .into_iter()
+                .map(|numbers| combine_numbers(&numbers, &input.0))
+                .sum(),
+            PartStats::GearRatio => {
+                let part_map = part_numbers
+                    .into_iter()
+                    .fold(HashMap::new(), |mut acc, parts| {
+                        parts.iter().into_iter().for_each(|part| {
+                            acc.insert(*part, parts.clone());
+                        });
+                        acc
+                    });
+                let stars = find_stars(&input.0, max_y, max_x);
+                stars
+                    .into_iter()
+                    .filter_map(|star| {
+                        let adjacent_numbers = star
+                            .into_iter_radial_adjacent()
+                            .filter_map(|adjacent| part_map.get(&adjacent))
+                            .fold(BTreeSet::new(), |mut acc, number| {
+                                acc.insert(number);
+                                acc
+                            });
+                        if adjacent_numbers.len() == 2 {
+                            Some(adjacent_numbers)
+                        } else {
+                            None
+                        }
+                    })
+                    .map(|matched_numbers| {
+                        matched_numbers
+                            .into_iter()
+                            .map(|number| combine_numbers(&number, &input.0))
+                            .fold(1, |acc, number| acc * number)
+                    })
+                    .sum()
+            }
+        }
     }
 }
 
@@ -158,4 +219,22 @@ fn get_value_from_item(point: &BoundedPoint, items: &Vec<Vec<Item>>) -> Option<I
     items
         .get(point.y)
         .and_then(|row| row.get(point.x).map(|value| *value))
+}
+
+fn find_stars(items: &Vec<Vec<Item>>, max_y: usize, max_x: usize) -> Vec<BoundedPoint> {
+    items
+        .into_iter()
+        .enumerate()
+        .flat_map(|(y, row)| {
+            row.into_iter()
+                .enumerate()
+                .filter_map(move |(x, value)| match value {
+                    Item::Symbol(symbol) => match symbol {
+                        Symbol::Star => Some(BoundedPoint { x, y, max_x, max_y }),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+        })
+        .collect()
 }
