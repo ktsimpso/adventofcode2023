@@ -7,7 +7,7 @@ use ariadne::{Color, Label, Report, ReportKind, Source};
 use chumsky::{
     error::Rich,
     extra,
-    primitive::just,
+    primitive::{end, just},
     text::{self, newline},
     IterParser, Parser,
 };
@@ -68,14 +68,21 @@ pub fn parse_isize_with_radix<'a>(
 
 pub fn parse_lines<'a, T>(
     line_parser: impl Parser<'a, &'a str, T, extra::Err<Rich<'a, char>>>,
-    min: usize,
 ) -> impl Parser<'a, &'a str, Vec<T>, extra::Err<Rich<'a, char>>> {
     line_parser
         .separated_by(text::newline())
-        .at_least(min)
+        .allow_trailing()
         .collect::<Vec<_>>()
+        .then_ignore(end())
 }
 
+pub fn parse_table<'a, T>(
+    item_parser: impl Parser<'a, &'a str, T, extra::Err<Rich<'a, char>>>,
+) -> impl Parser<'a, &'a str, Vec<Vec<T>>, extra::Err<Rich<'a, char>>> {
+    parse_lines(item_parser.repeated().at_least(1).collect())
+}
+
+// Note, don't use a parser with a newline delimiter and allow_trailing with this parser
 pub fn parse_between_blank_lines<'a, T>(
     chunk_parser: impl Parser<'a, &'a str, T, extra::Err<Rich<'a, char>>>,
 ) -> impl Parser<'a, &'a str, Vec<T>, extra::Err<Rich<'a, char>>> {

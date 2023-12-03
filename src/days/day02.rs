@@ -3,13 +3,7 @@ use crate::libs::{
     parse::{parse_lines, parse_usize, StringParse},
     problem::Problem,
 };
-use chumsky::{
-    error::Rich,
-    extra,
-    primitive::{end, just},
-    text::newline,
-    IterParser, Parser,
-};
+use chumsky::{error::Rich, extra, primitive::just, IterParser, Parser};
 use clap::{Args, ValueEnum};
 use std::cell::LazyCell;
 
@@ -51,10 +45,7 @@ impl StringParse for Input {
             .collect::<Vec<(usize, Color)>>();
         let draws = draw.separated_by(just("; ")).collect::<Vec<_>>();
 
-        parse_lines(game_id.then(draws).map(|(id, draws)| Game { id, draws }), 0)
-            .then_ignore(newline().or_not())
-            .then_ignore(end())
-            .map(Input)
+        parse_lines(game_id.then(draws).map(|(id, draws)| Game { id, draws })).map(Input)
     }
 }
 

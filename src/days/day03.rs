@@ -1,17 +1,17 @@
 use crate::libs::{
     cli::{CliProblem, Command},
     graph::BoundedPoint,
-    parse::{parse_lines, StringParse},
+    parse::{parse_table, StringParse},
     problem::Problem,
 };
 use chumsky::{
     error::Rich,
     extra,
-    primitive::{choice, end, just, one_of},
-    text::newline,
-    IterParser, Parser,
+    primitive::{choice, just, one_of},
+    Parser,
 };
 use clap::{Args, ValueEnum};
+use itertools::Itertools;
 use std::{
     cell::LazyCell,
     collections::{BTreeSet, HashMap},
@@ -80,10 +80,7 @@ impl StringParse for Input {
             .map(|value| Item::Number(value))
             .or(symbols.map(|symbol| Item::Symbol(symbol)))
             .or(just(".").to(Item::Blank));
-        parse_lines(item.repeated().at_least(1).collect::<Vec<_>>(), 0)
-            .then_ignore(newline().or_not())
-            .then_ignore(end())
-            .map(Input)
+        parse_table(item).map(Input)
     }
 }
 
@@ -160,33 +157,31 @@ impl Problem<Input, CommandLineArguments> for Day03 {
 }
 
 fn find_numbers(items: &Vec<Vec<Item>>, max_y: usize, max_x: usize) -> Vec<Vec<BoundedPoint>> {
-    let mut all_numbers = Vec::new();
-    for column in 0..=max_y {
-        let mut accumulator = Vec::new();
-
-        for row in 0..=max_x {
-            let current = BoundedPoint {
-                x: row,
-                y: column,
-                max_x,
-                max_y,
-            };
-            let value = get_value_from_item(&current, items).expect("Value exists");
-            match value {
-                Item::Number(_) => accumulator.push(current),
-                _ => {
-                    if !accumulator.is_empty() {
-                        all_numbers.push(accumulator);
-                        accumulator = Vec::new();
+    items
+        .into_iter()
+        .enumerate()
+        .flat_map(|(y, row)| {
+            row.into_iter()
+                .enumerate()
+                .group_by(|(_, item)| match item {
+                    Item::Number(_) => true,
+                    _ => false,
+                })
+                .into_iter()
+                .filter_map(|(key, group)| {
+                    if key {
+                        Some(
+                            group
+                                .map(|(x, _)| BoundedPoint { x, y, max_x, max_y })
+                                .collect::<Vec<_>>(),
+                        )
+                    } else {
+                        None
                     }
-                }
-            }
-        }
-        if !accumulator.is_empty() {
-            all_numbers.push(accumulator);
-        }
-    }
-    all_numbers
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }
 
 fn adjacent_to_symbol(point: &BoundedPoint, items: &Vec<Vec<Item>>) -> bool {

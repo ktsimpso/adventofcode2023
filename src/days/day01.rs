@@ -3,13 +3,7 @@ use crate::libs::{
     parse::{parse_lines, StringParse},
     problem::Problem,
 };
-use chumsky::{
-    error::Rich,
-    extra,
-    primitive::{end, one_of},
-    text::newline,
-    IterParser, Parser,
-};
+use chumsky::{error::Rich, extra, primitive::one_of, IterParser, Parser};
 use clap::Args;
 use itertools::Itertools;
 use std::cell::LazyCell;
@@ -31,13 +25,7 @@ struct Input(Vec<String>);
 impl StringParse for Input {
     fn parse<'a>() -> impl Parser<'a, &'a str, Self, extra::Err<Rich<'a, char>>> {
         let charset = ('a'..='z').chain('0'..='9').collect::<String>();
-        parse_lines(
-            one_of(charset).repeated().at_least(1).collect::<String>(),
-            0,
-        )
-        .then_ignore(newline().or_not())
-        .then_ignore(end())
-        .map(Input)
+        parse_lines(one_of(charset).repeated().at_least(1).collect::<String>()).map(Input)
     }
 }
 
