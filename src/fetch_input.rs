@@ -1,12 +1,13 @@
-use std::{path::PathBuf, thread, time::Duration};
+use std::{io, path::PathBuf, thread, time::Duration};
 
-use anyhow::Result;
+use anyhow::{Ok, Result};
 use chrono::{Local, NaiveTime};
 use clap::{ArgMatches, Args, Command};
 use cookie_store::CookieStore;
 use dialoguer::Confirm;
+use scraper::{Html, Selector};
 use tap::Tap;
-use ureq::{AgentBuilder, Cookie};
+use ureq::{Agent, AgentBuilder, Cookie};
 use url::Url;
 
 use crate::libs::{cli::CliArgs, file_system::save_string_to_file};
@@ -33,6 +34,9 @@ struct CommandLineArguments {
         help = "Wait until the specified time before attempting to download the file. Always assumes this time is in the future."
     )]
     download_time: Option<String>,
+
+    #[arg(short, long, help = "Also attempt to parse the sample input")]
+    parse_sample: bool,
 }
 
 pub fn command() -> Command {
@@ -44,19 +48,6 @@ pub fn command() -> Command {
 
 pub fn run(args: &ArgMatches) -> Result<()> {
     let arguments = CommandLineArguments::parse_output(args);
-    let input_file = &PathBuf::new()
-        .tap_mut(|path| path.push(format!("input/day{:0>2}/input.txt", arguments.day)));
-
-    if input_file.exists() && !arguments.force {
-        let confirm = Confirm::new()
-            .with_prompt("Input file for this day already exists, overwrite?")
-            .interact()?;
-
-        if !confirm {
-            println!("Not downloading the input file");
-            return Ok(());
-        }
-    }
 
     let url = Url::parse("https://adventofcode.com")?;
     let cookie = Cookie::build("session", arguments.session)
@@ -85,17 +76,115 @@ pub fn run(args: &ArgMatches) -> Result<()> {
 
             thread::sleep(wait);
 
-            Ok::<(), anyhow::Error>(())
+            Ok(())
         }
         None => Ok(()),
     }?;
 
+    fetch_and_save_input_file(&agent, &url, arguments.day, arguments.force)?;
+
+    if arguments.parse_sample {
+        fetch_and_save_samples(&agent, &url, arguments.day, arguments.force)
+    } else {
+        Ok(())
+    }
+}
+
+fn fetch_and_save_input_file(agent: &Agent, url: &Url, day: usize, force: bool) -> Result<()> {
+    let input_file =
+        &PathBuf::new().tap_mut(|path| path.push(format!("input/day{:0>2}/input.txt", day)));
+
+    if input_file.exists() && !force {
+        let confirm = Confirm::new()
+            .with_prompt("Input file for this day already exists, overwrite?")
+            .interact()?;
+
+        if !confirm {
+            println!("Not downloading the input file");
+            return Ok(());
+        }
+    }
+
     println!("Downloading the input file");
     let result = agent
-        .get(&format!("{}2023/day/{}/input", url.as_str(), arguments.day))
+        .get(&format!("{}2023/day/{}/input", url.as_str(), day))
         .call()?
         .into_string()?;
 
     println!("Saving file to disk");
     save_string_to_file(&result, input_file).map_err(|e| e.into())
+}
+
+fn fetch_and_save_samples(agent: &Agent, url: &Url, day: usize, force: bool) -> Result<()> {
+    let sample_file = sample_file_from_index(day, 0);
+
+    if sample_file.exists() && !force {
+        let confirm = Confirm::new()
+            .with_prompt("Sample file for this day already exists, overwrite?")
+            .interact()?;
+
+        if !confirm {
+            println!("Not downloading the sample file");
+            return Ok(());
+        }
+    }
+
+    println!("Downloading the page information");
+    let result = agent
+        .get(&format!("{}2023/day/{}", url.as_str(), day))
+        .call()?
+        .into_string()?;
+
+    let html = Html::parse_document(&result);
+    let code_blocks_selector = Selector::parse("code")
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+
+    let mut sample_index = 0;
+
+    html.select(&code_blocks_selector)
+        .into_iter()
+        .find_map(|code_block| {
+            code_block.text().last().and_then(|code_text| {
+                println!("Found:");
+                println!("{}", code_text);
+                Confirm::new()
+                    .with_prompt("Is this a sample?")
+                    .interact()
+                    .map_err(|e| anyhow::Error::new(e))
+                    .and_then(|is_sample| {
+                        if is_sample {
+                            let file_name = sample_file_from_index(day, sample_index);
+                            println!(
+                                "Saving file to {}",
+                                file_name.to_str().expect("path exists")
+                            );
+
+                            save_string_to_file(code_text, &file_name)?;
+                            sample_index += 1;
+
+                            Confirm::new()
+                                .with_prompt("Are there more samples?")
+                                .interact()
+                                .map_err(|e| anyhow::Error::new(e))
+                        } else {
+                            Ok(true)
+                        }
+                    })
+                    .map(|next| if !next { Some(()) } else { None })
+                    .unwrap_or(None)
+            })
+        });
+
+    Ok(())
+}
+
+fn sample_file_from_index(day: usize, index: usize) -> PathBuf {
+    let sample_number = if index == 0 {
+        "".to_string()
+    } else {
+        (index + 1).to_string()
+    };
+
+    PathBuf::new()
+        .tap_mut(|path| path.push(format!("input/day{:0>2}/sample{}.txt", day, sample_number)))
 }
