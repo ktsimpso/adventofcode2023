@@ -1,9 +1,9 @@
 use crate::libs::{
     cli::{CliProblem, Command},
-    parse::{parse_lines, StringParse},
+    parse::{parse_alphanumeric, parse_lines, StringParse},
     problem::Problem,
 };
-use chumsky::{error::Rich, extra, primitive::one_of, IterParser, Parser};
+use chumsky::{error::Rich, extra, Parser};
 use clap::Args;
 use itertools::Itertools;
 use std::cell::LazyCell;
@@ -24,8 +24,7 @@ struct Input(Vec<String>);
 
 impl StringParse for Input {
     fn parse<'a>() -> impl Parser<'a, &'a str, Self, extra::Err<Rich<'a, char>>> {
-        let charset = ('a'..='z').chain('0'..='9').collect::<String>();
-        parse_lines(one_of(charset).repeated().at_least(1).collect::<String>()).map(Input)
+        parse_lines(parse_alphanumeric().map(|s: &'a str| s.to_string())).map(Input)
     }
 }
 

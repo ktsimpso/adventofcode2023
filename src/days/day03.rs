@@ -1,13 +1,13 @@
 use crate::libs::{
     cli::{CliProblem, Command},
     graph::BoundedPoint,
-    parse::{parse_table, StringParse},
+    parse::{parse_digit, parse_table, StringParse},
     problem::Problem,
 };
 use chumsky::{
     error::Rich,
     extra,
-    primitive::{choice, just, one_of},
+    primitive::{choice, just},
     Parser,
 };
 use clap::{Args, ValueEnum};
@@ -76,7 +76,7 @@ impl StringParse for Input {
             just("/").to(Symbol::Slash),
             just("-").to(Symbol::Minus),
         ));
-        let item = one_of('0'..='9')
+        let item = parse_digit()
             .map(|value| Item::Number(value))
             .or(symbols.map(|symbol| Item::Symbol(symbol)))
             .or(just(".").to(Item::Blank));

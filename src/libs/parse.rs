@@ -5,10 +5,12 @@ use std::{
 
 use ariadne::{Color, Label, Report, ReportKind, Source};
 use chumsky::{
-    error::Rich,
-    extra,
-    primitive::{end, just},
-    text::{self, newline},
+    error::{Error as ChumskyError, Rich},
+    extra::{self, ParserExtra},
+    input::{StrInput, ValueInput},
+    primitive::{any, end, just, one_of},
+    text::{self, newline, Char},
+    util::MaybeRef,
     IterParser, Parser,
 };
 use itertools::Itertools;
@@ -64,6 +66,38 @@ pub fn parse_isize_with_radix<'a>(
             };
             isize::from_str_radix(&combined_number, radix).map_err(|op| Rich::custom(span, op))
         })
+}
+
+pub fn parse_alphanumeric<
+    'a,
+    I: ValueInput<'a> + StrInput<'a, C>,
+    C: Char,
+    E: ParserExtra<'a, I>,
+>() -> impl Parser<'a, I, &'a C::Str, E> {
+    any()
+        .try_map(move |c: C, span| {
+            if c.to_char().is_alphanumeric() {
+                Ok(c)
+            } else {
+                Err(ChumskyError::expected_found(
+                    [],
+                    Some(MaybeRef::Val(c)),
+                    span,
+                ))
+            }
+        })
+        .then(
+            any()
+                .filter(|c: &C| c.to_char().is_alphanumeric())
+                .repeated(),
+        )
+        .ignored()
+        .to_slice()
+}
+
+pub fn parse_digit<'a, I: ValueInput<'a> + StrInput<'a, char>, E: ParserExtra<'a, I>>(
+) -> impl Parser<'a, I, char, E> {
+    one_of('0'..='9')
 }
 
 pub fn parse_lines<'a, T>(
