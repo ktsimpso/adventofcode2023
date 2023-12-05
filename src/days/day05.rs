@@ -1,6 +1,6 @@
 use crate::libs::{
     cli::{CliProblem, Command},
-    parse::{parse_lines, parse_usize, StringParse},
+    parse::{parse_usize, StringParse},
     problem::Problem,
 };
 use chumsky::{
@@ -10,9 +10,10 @@ use chumsky::{
     text::newline,
     IterParser, Parser,
 };
-use clap::{Args, ValueEnum};
-use itertools::Itertools;
-use std::{cell::LazyCell, collections::HashMap};
+use clap::Args;
+use either::Either;
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
+use std::cell::LazyCell;
 
 pub const DAY_05: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     Box::new(
@@ -23,7 +24,11 @@ pub const DAY_05: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
         )
         .with_part(
             "Finds the lowest location where seeds should be planted.",
-            CommandLineArguments {},
+            CommandLineArguments { ranges: false },
+        )
+        .with_part(
+            "Finds the lowest location where the seeds are ranges.",
+            CommandLineArguments { ranges: true },
         ),
     )
 });
@@ -130,7 +135,14 @@ fn parse_map_value<'a>() -> impl Parser<'a, &'a str, MapValue, extra::Err<Rich<'
 }
 
 #[derive(Args)]
-struct CommandLineArguments {}
+struct CommandLineArguments {
+    #[arg(
+        short,
+        long,
+        help = "If the seed input should be interperted as a range"
+    )]
+    ranges: bool,
+}
 
 struct Day05 {}
 
@@ -138,20 +150,27 @@ impl Problem<Input, CommandLineArguments> for Day05 {
     type Output = usize;
 
     fn run(input: Input, arguments: &CommandLineArguments) -> Self::Output {
-        input
-            .seeds
-            .into_iter()
-            .map(|seed| get_destination_from_source(seed, &input.almanac.seed_to_soil))
-            .map(|soil| get_destination_from_source(soil, &input.almanac.soil_to_fert))
-            .map(|fert| get_destination_from_source(fert, &input.almanac.fert_to_water))
-            .map(|water| get_destination_from_source(water, &input.almanac.water_to_light))
-            .map(|light| get_destination_from_source(light, &input.almanac.ligh_to_temp))
-            .map(|temp| get_destination_from_source(temp, &input.almanac.temp_to_humidity))
-            .map(|humidity| {
-                get_destination_from_source(humidity, &input.almanac.humidity_to_location)
-            })
-            .min()
-            .expect("location found")
+        let chunks = input.seeds.clone().into_par_iter().chunks(2);
+        if arguments.ranges {
+            // TODO: proper range math instead of throwing rayon at the problem
+            Either::Left(chunks.into_par_iter().flat_map(|chunk| {
+                let mut chunk = chunk.into_iter();
+                let first = chunk.next().expect("Seed start exists");
+                let range = chunk.next().expect("Range exists");
+                first..(first + range)
+            }))
+        } else {
+            Either::Right(input.seeds.into_par_iter())
+        }
+        .map(|seed| get_destination_from_source(seed, &input.almanac.seed_to_soil))
+        .map(|soil| get_destination_from_source(soil, &input.almanac.soil_to_fert))
+        .map(|fert| get_destination_from_source(fert, &input.almanac.fert_to_water))
+        .map(|water| get_destination_from_source(water, &input.almanac.water_to_light))
+        .map(|light| get_destination_from_source(light, &input.almanac.ligh_to_temp))
+        .map(|temp| get_destination_from_source(temp, &input.almanac.temp_to_humidity))
+        .map(|humidity| get_destination_from_source(humidity, &input.almanac.humidity_to_location))
+        .min()
+        .expect("location found")
     }
 }
 
