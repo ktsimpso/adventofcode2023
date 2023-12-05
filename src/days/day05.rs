@@ -12,8 +12,12 @@ use chumsky::{
 };
 use clap::Args;
 use either::Either;
-use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
-use std::cell::LazyCell;
+use itertools::Itertools;
+use std::{
+    cell::LazyCell,
+    cmp::{max, min},
+};
+use tap::Tap;
 
 pub const DAY_05: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     Box::new(
@@ -118,7 +122,9 @@ fn parse_map<'a>(
                 .at_least(1)
                 .collect::<Vec<_>>(),
         )
-        .map(|value| value.1)
+        .map(|(_, result)| {
+            result.tap_mut(|r| r.sort_by(|a, b| a.source_start.cmp(&b.source_start)))
+        })
 }
 
 fn parse_map_value<'a>() -> impl Parser<'a, &'a str, MapValue, extra::Err<Rich<'a, char>>> {
@@ -144,42 +150,108 @@ struct CommandLineArguments {
     ranges: bool,
 }
 
+struct Range {
+    start: usize,
+    end: usize,
+}
+
 struct Day05 {}
 
 impl Problem<Input, CommandLineArguments> for Day05 {
     type Output = usize;
 
     fn run(input: Input, arguments: &CommandLineArguments) -> Self::Output {
-        let chunks = input.seeds.clone().into_par_iter().chunks(2);
+        let chunks = input.seeds.clone().into_iter().chunks(2);
         if arguments.ranges {
-            // TODO: proper range math instead of throwing rayon at the problem
-            Either::Left(chunks.into_par_iter().flat_map(|chunk| {
+            Either::Left(chunks.into_iter().map(|chunk| {
                 let mut chunk = chunk.into_iter();
                 let first = chunk.next().expect("Seed start exists");
                 let range = chunk.next().expect("Range exists");
-                first..(first + range)
+                Range {
+                    start: first,
+                    end: first + range - 1,
+                }
             }))
         } else {
-            Either::Right(input.seeds.into_par_iter())
+            Either::Right(input.seeds.into_iter().map(|seed| Range {
+                start: seed,
+                end: seed,
+            }))
         }
-        .map(|seed| get_destination_from_source(seed, &input.almanac.seed_to_soil))
-        .map(|soil| get_destination_from_source(soil, &input.almanac.soil_to_fert))
-        .map(|fert| get_destination_from_source(fert, &input.almanac.fert_to_water))
-        .map(|water| get_destination_from_source(water, &input.almanac.water_to_light))
-        .map(|light| get_destination_from_source(light, &input.almanac.ligh_to_temp))
-        .map(|temp| get_destination_from_source(temp, &input.almanac.temp_to_humidity))
-        .map(|humidity| get_destination_from_source(humidity, &input.almanac.humidity_to_location))
+        .flat_map(|seed| {
+            map_destination_ranged_from_source_range(seed, &input.almanac.seed_to_soil)
+        })
+        .flat_map(|soil| {
+            map_destination_ranged_from_source_range(soil, &input.almanac.soil_to_fert)
+        })
+        .flat_map(|fert| {
+            map_destination_ranged_from_source_range(fert, &input.almanac.fert_to_water)
+        })
+        .flat_map(|water| {
+            map_destination_ranged_from_source_range(water, &input.almanac.water_to_light)
+        })
+        .flat_map(|light| {
+            map_destination_ranged_from_source_range(light, &input.almanac.ligh_to_temp)
+        })
+        .flat_map(|temp| {
+            map_destination_ranged_from_source_range(temp, &input.almanac.temp_to_humidity)
+        })
+        .flat_map(|humidity| {
+            map_destination_ranged_from_source_range(humidity, &input.almanac.humidity_to_location)
+        })
+        .map(|range| range.start)
         .min()
         .expect("location found")
     }
 }
 
-fn get_destination_from_source(source: usize, source_map: &Vec<MapValue>) -> usize {
-    source_map
-        .into_iter()
-        .find(|map_value| {
-            source >= map_value.source_start && source <= map_value.source_start + map_value.range
-        })
-        .map(|map_value| source - map_value.source_start + map_value.destination_start)
-        .unwrap_or(source)
+fn map_destination_ranged_from_source_range(
+    source: Range,
+    source_map: &Vec<MapValue>,
+) -> Vec<Range> {
+    // this works because source_map is sorted by the source range
+    let (remaining, mut result) = source_map.into_iter().fold(
+        (Some(source), Vec::new()),
+        |(range, mut acc), destination_range| match range {
+            Some(source) => {
+                let destination_source_end =
+                    destination_range.source_start + destination_range.range - 1;
+
+                if source.start < destination_range.source_start {
+                    acc.push(Range {
+                        start: source.start,
+                        end: min(source.end, destination_range.source_start - 1),
+                    });
+                }
+
+                if source.end >= destination_range.source_start
+                    && source.start <= destination_source_end
+                {
+                    acc.push(Range {
+                        start: max(source.start, destination_range.source_start)
+                            - destination_range.source_start
+                            + destination_range.destination_start,
+                        end: min(source.end, destination_source_end)
+                            - destination_range.source_start
+                            + destination_range.destination_start,
+                    });
+                }
+
+                let remaining = if source.end > destination_source_end {
+                    Some(Range {
+                        start: max(source.start, destination_source_end + 1),
+                        end: source.end,
+                    })
+                } else {
+                    None
+                };
+
+                (remaining, acc)
+            }
+            None => (None, acc),
+        },
+    );
+    remaining.into_iter().for_each(|range| result.push(range));
+
+    result
 }
