@@ -6,7 +6,7 @@ mod libs;
 
 use anyhow::Result;
 use clap::Command as ClapCommand;
-use days::{day01, day02, day03, day04, day05};
+use days::{day01, day02, day03, day04, day05, day06};
 use std::{
     cell::LazyCell,
     time::{Duration, Instant},
@@ -23,6 +23,7 @@ fn main() -> Result<()> {
         day03::DAY_03,
         day04::DAY_04,
         day05::DAY_05,
+        day06::DAY_06,
     ]
     .into_iter()
     .map(|command| (command.get_name(), command))
