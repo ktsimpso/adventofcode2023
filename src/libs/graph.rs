@@ -1,4 +1,4 @@
-const CARDINAL_DIRECTIONS: [PointDirection; 4] = [
+pub const CARDINAL_DIRECTIONS: [PointDirection; 4] = [
     PointDirection::Down,
     PointDirection::Left,
     PointDirection::Right,
