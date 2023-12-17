@@ -38,6 +38,8 @@ where
 pub trait Command {
     fn run(&self, args: &ArgMatches) -> Result<ProblemResult>;
 
+    fn run_part(&self, part: &str) -> Result<ProblemResult>;
+
     fn get_name(&self) -> &'static str;
 
     fn get_subcommand(&self) -> ClapCommand;
@@ -114,6 +116,29 @@ where
                 )
                 .map(|input| P::run(input.0, &A::parse_output(args)).into())
             })
+    }
+
+    fn run_part(&self, part: &str) -> Result<ProblemResult> {
+        self.parts
+            .iter()
+            .enumerate()
+            .map(|(i, part)| (format!("part{}", i + 1), &part.arg))
+            .find_map(|(name, arg)| {
+                if name == part {
+                    Some(
+                        StringParser::<I>::try_from(
+                            file_to_string(&PathBuf::new().tap_mut(|path| {
+                                path.push(format!("input/{}/input.txt", self.name))
+                            }))
+                            .expect("Can read file"),
+                        )
+                        .map(|input| P::run(input.0, arg).into()),
+                    )
+                } else {
+                    None
+                }
+            })
+            .expect("part exists")
     }
 
     fn get_name(&self) -> &'static str {

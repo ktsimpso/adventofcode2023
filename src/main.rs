@@ -44,18 +44,59 @@ fn main() -> Result<()> {
     let download_command = fetch_input::command();
     let download_command_name = download_command.get_name().to_string();
 
+    let all_days = commands.iter().flat_map(|(name, command)| {
+        command
+            .get_subcommand()
+            .get_subcommands()
+            .filter(|subcommand| subcommand.get_name().starts_with("part"))
+            .map(|subcommand| (name.to_owned(), command, subcommand.get_name().to_owned()))
+            .collect::<Vec<_>>()
+    });
+
+    let all_days_command =
+        ClapCommand::new("all_days").about("Runs all days in a row and gets the total time.");
+
     let matches = ClapCommand::new("Advent of Code 2023")
         .version(VERSION)
         .about("Run the advent of code problems from this main program")
         .arg_required_else_help(true)
         .subcommand_required(true)
         .subcommand(download_command)
+        .subcommand(all_days_command)
         .subcommands(subcommands)
         .get_matches();
 
     matches
         .subcommand_matches(&download_command_name)
         .map(fetch_input::run)
+        .or_else(|| {
+            matches.subcommand_matches("all_days").map(|_| {
+                all_days
+                    .map(|(day, command, part)| {
+                        println!("=============Running {:}, {:}=============", day, part);
+                        let now = Instant::now();
+                        let result = command.run_part(&part);
+                        let elapsed = now.elapsed();
+                        result.map(|r| (r, day, part, elapsed))
+                    })
+                    .collect::<Result<Vec<_>>>()
+                    .map(|results| {
+                        results.into_iter().fold(
+                            Duration::ZERO,
+                            |acc, (result, day, part, elapsed)| {
+                                println!(
+                                    "{} {} took {:#?} to run. Result: {}",
+                                    day, part, elapsed, result
+                                );
+                                acc + elapsed
+                            },
+                        )
+                    })
+                    .map(|total| {
+                        println!("Total Time: {:#?}", total);
+                    })
+            })
+        })
         .unwrap_or_else(|| {
             commands
                 .into_iter()

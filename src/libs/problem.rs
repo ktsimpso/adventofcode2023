@@ -3,6 +3,7 @@ use std::fmt::{self, Display};
 pub enum ProblemResult {
     Isize(isize),
     Usize(usize),
+    U32(u32),
     String(String),
 }
 
@@ -11,6 +12,7 @@ impl Display for ProblemResult {
         match self {
             ProblemResult::Isize(val) => val.fmt(f),
             ProblemResult::Usize(val) => val.fmt(f),
+            ProblemResult::U32(val) => val.fmt(f),
             ProblemResult::String(val) => val.fmt(f),
         }
     }
@@ -31,6 +33,12 @@ impl From<usize> for ProblemResult {
 impl From<String> for ProblemResult {
     fn from(item: String) -> Self {
         ProblemResult::String(item)
+    }
+}
+
+impl From<u32> for ProblemResult {
+    fn from(value: u32) -> Self {
+        ProblemResult::U32(value)
     }
 }
 
