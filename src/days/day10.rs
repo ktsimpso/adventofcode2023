@@ -1,32 +1,41 @@
 use crate::libs::{
     cli::{CliProblem, Command},
     graph::{BoundedPoint, PointDirection, CARDINAL_DIRECTIONS},
-    parse::{parse_isize, parse_lines, parse_table, parse_usize, StringParse},
+    parse::{parse_table, StringParse},
     problem::Problem,
 };
 use chumsky::{
     container::Seq,
     error::Rich,
     extra,
-    primitive::{choice, end, just},
-    text::newline,
-    IterParser, Parser,
+    primitive::{choice, just},
+    Parser,
 };
-use clap::Args;
-use integer_sqrt::IntegerSquareRoot;
-use itertools::Itertools;
+use clap::{Args, ValueEnum};
 use std::{
     cell::LazyCell,
-    collections::{HashMap, HashSet, VecDeque},
-    ops::Bound,
+    collections::{HashSet, VecDeque},
 };
-use tap::Tap;
 
 pub const DAY_10: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     Box::new(
-        CliProblem::<Input, CommandLineArguments, Day10>::new("day10", "help", "file help")
-            .with_part("part1", CommandLineArguments {})
-            .with_part("part2", CommandLineArguments {}),
+        CliProblem::<Input, CommandLineArguments, Day10>::new(
+            "day10",
+            "Find stats about a loop of pipes",
+            "Table with exactly one start which connacts to a loop of pipes",
+        )
+        .with_part(
+            "Finds the furthest lenght of the start in the loop",
+            CommandLineArguments {
+                loop_stat: LoopStat::LengthFromStart,
+            },
+        )
+        .with_part(
+            "Counts the number of segments enclosed by the loop",
+            CommandLineArguments {
+                loop_stat: LoopStat::EnclosedCount,
+            },
+        ),
     )
 });
 
@@ -76,7 +85,16 @@ impl StringParse for Input {
 }
 
 #[derive(Args)]
-struct CommandLineArguments {}
+struct CommandLineArguments {
+    #[arg(short, long, help = "The type of statistic about the loop")]
+    loop_stat: LoopStat,
+}
+
+#[derive(Clone, ValueEnum)]
+enum LoopStat {
+    LengthFromStart,
+    EnclosedCount,
+}
 
 struct Day10 {}
 
@@ -123,30 +141,33 @@ impl Problem<Input, CommandLineArguments> for Day10 {
                 .for_each(|item| queue.push_back(item))
         }
 
-        let mut in_loop = false;
-        let mut count = 0;
+        match arguments.loop_stat {
+            LoopStat::LengthFromStart => max,
+            LoopStat::EnclosedCount => {
+                let mut in_loop = false;
+                let mut count = 0;
 
-        input.0.iter().enumerate().for_each(|(y, row)| {
-            row.into_iter()
-                .enumerate()
-                .map(|(x, field)| (BoundedPoint { x, y, max_x, max_y }, field))
-                .for_each(|(point, field)| {
-                    if visited.contains(&point) {
-                        match field {
-                            Field::Vertical | Field::NorthEast | Field::NorthWest => {
-                                in_loop = !in_loop;
+                input.0.iter().enumerate().for_each(|(y, row)| {
+                    row.into_iter()
+                        .enumerate()
+                        .map(|(x, field)| (BoundedPoint { x, y, max_x, max_y }, field))
+                        .for_each(|(point, field)| {
+                            if visited.contains(&point) {
+                                match field {
+                                    Field::Vertical | Field::NorthEast | Field::NorthWest => {
+                                        in_loop = !in_loop;
+                                    }
+                                    _ => (),
+                                };
+                            } else if in_loop {
+                                count += 1;
                             }
-                            _ => (),
-                        };
-                    } else if in_loop {
-                        count += 1;
-                    }
-                })
-        });
+                        })
+                });
 
-        count
-
-        //max
+                count
+            }
+        }
     }
 }
 
