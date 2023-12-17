@@ -1,31 +1,34 @@
 use crate::libs::{
     cli::{CliProblem, Command},
     graph::BoundedPoint,
-    math::absolute_difference,
-    parse::{parse_isize, parse_lines, parse_table, parse_usize, StringParse},
+    parse::{parse_table, StringParse},
     problem::Problem,
 };
-use chumsky::{
-    error::Rich,
-    extra,
-    primitive::{end, just},
-    text::newline,
-    IterParser, Parser,
-};
+use chumsky::{error::Rich, extra, primitive::just, Parser};
 use clap::Args;
-use integer_sqrt::IntegerSquareRoot;
 use itertools::Itertools;
 use std::{
     cell::LazyCell,
     cmp::{max, min},
 };
-use tap::Tap;
 
 pub const DAY_11: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     Box::new(
-        CliProblem::<Input, CommandLineArguments, Day11>::new("day11", "help", "file help")
-            .with_part("part1", CommandLineArguments {})
-            .with_part("part2", CommandLineArguments {}),
+        CliProblem::<Input, CommandLineArguments, Day11>::new(
+            "day11",
+            "Measures the distance between galaxies and sums them",
+            "Table of the current universe",
+        )
+        .with_part(
+            "Expansion Rate is 2",
+            CommandLineArguments { expansion_rate: 2 },
+        )
+        .with_part(
+            "Expansion Rate is 1_000_000",
+            CommandLineArguments {
+                expansion_rate: 1_000_000,
+            },
+        ),
     )
 });
 
@@ -47,35 +50,18 @@ impl StringParse for Input {
 }
 
 #[derive(Args)]
-struct CommandLineArguments {}
+struct CommandLineArguments {
+    #[arg(short, long, help = "How fast the universe expands.")]
+    expansion_rate: usize,
+}
 
 struct Day11 {}
 
 impl Problem<Input, CommandLineArguments> for Day11 {
     type Output = usize;
 
-    fn run(mut input: Input, arguments: &CommandLineArguments) -> Self::Output {
-        //print_space_time(&input.0);
-        /*let space_time = expand_space_time(input.0);
-
-                let max_y = space_time.len() - 1;
-                let max_x = space_time.first().map(|row| row.len()).unwrap_or(0) - 1;
-
-                let galaxies = find_galaxies(&space_time, max_x, max_y);
-
-                galaxies
-                    .into_iter()
-                    .combinations(2)
-                    .map(|points| {
-                        let mut points = points.into_iter();
-                        let first = points.next().expect("one exists");
-                        let second = points.next().expect("Two exists");
-                        distance(&first, &second)
-                    })
-                    .sum()
-        */
-        //print_space_time(&space_time);
-        let expansion_rate = 1000000 - 1;
+    fn run(input: Input, arguments: &CommandLineArguments) -> Self::Output {
+        let expansion_rate = arguments.expansion_rate - 1;
         let empty_rows = find_empty_rows(&input.0);
         let empty_columns = find_empty_columns(&input.0);
         let max_y = input.0.len() - 1;
@@ -112,10 +98,6 @@ impl Problem<Input, CommandLineArguments> for Day11 {
             })
             .sum()
     }
-}
-
-fn distance(first: &BoundedPoint, second: &BoundedPoint) -> usize {
-    absolute_difference(first.x, second.x) + absolute_difference(first.y, second.y)
 }
 
 fn find_galaxies(
@@ -156,37 +138,4 @@ fn find_empty_columns(space_time: &Vec<Vec<SpaceTime>>) -> Vec<usize> {
         .sorted()
         .rev()
         .collect()
-}
-
-fn expand_space_time(mut space_time: Vec<Vec<SpaceTime>>) -> Vec<Vec<SpaceTime>> {
-    let row_size = space_time.iter().next().expect("At least one row").len();
-    let empty_rows = find_empty_rows(&space_time);
-
-    let empty_columns = find_empty_columns(&space_time);
-
-    empty_rows
-        .into_iter()
-        .for_each(|y| space_time.insert(y, vec![SpaceTime::Space; row_size]));
-
-    empty_columns.into_iter().for_each(|x| {
-        space_time
-            .iter_mut()
-            .for_each(|row| row.insert(x, SpaceTime::Space))
-    });
-
-    space_time
-}
-
-fn print_space_time(space_time: &Vec<Vec<SpaceTime>>) {
-    space_time.into_iter().for_each(|row| {
-        println!(
-            "{}",
-            row.into_iter()
-                .map(|space| match space {
-                    SpaceTime::Space => ".",
-                    SpaceTime::Galaxy => "#",
-                })
-                .join("")
-        )
-    })
 }
