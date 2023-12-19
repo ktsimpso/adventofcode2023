@@ -9,7 +9,7 @@ use anyhow::Result;
 use clap::Command as ClapCommand;
 use days::{
     day01, day02, day03, day04, day05, day06, day07, day08, day09, day10, day11, day12, day13,
-    day14, day15, day16, day17,
+    day14, day15, day16, day17, day18,
 };
 use std::{
     cell::LazyCell,
@@ -39,6 +39,7 @@ fn main() -> Result<()> {
         day15::DAY_15,
         day16::DAY_16,
         day17::DAY_17,
+        day18::DAY_18,
     ]
     .into_iter()
     .map(|command| (command.get_name(), command))
