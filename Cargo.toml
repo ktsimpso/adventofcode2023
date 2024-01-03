@@ -1,6 +1,6 @@
 [package]
 name = "adventofcode2023"
-version = "0.23.0"
+version = "0.24.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -15,6 +15,7 @@ chrono = "0.4.31"
 chumsky = "1.0.0-alpha.6"
 clap = { version = "4.4.8", features = ["derive", "string", "env"] }
 cookie_store = "0.20.0"
+dashu = "0.4.0"
 dialoguer = "0.11.0"
 either = "1.9.0"
 integer-sqrt = "0.1.5"
