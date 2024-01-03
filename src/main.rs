@@ -1,5 +1,6 @@
 #![feature(lazy_cell)]
 #![feature(iter_map_windows)]
+#![feature(let_chains)]
 
 mod days;
 mod fetch_input;
@@ -9,7 +10,7 @@ use anyhow::Result;
 use clap::Command as ClapCommand;
 use days::{
     day01, day02, day03, day04, day05, day06, day07, day08, day09, day10, day11, day12, day13,
-    day14, day15, day16, day17, day18, day19,
+    day14, day15, day16, day17, day18, day19, day20,
 };
 use std::{
     cell::LazyCell,
@@ -41,6 +42,7 @@ fn main() -> Result<()> {
         day17::DAY_17,
         day18::DAY_18,
         day19::DAY_19,
+        day20::DAY_20,
     ]
     .into_iter()
     .map(|command| (command.get_name(), command))
