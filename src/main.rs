@@ -101,9 +101,17 @@ fn main() -> Result<()> {
                         results.into_iter().fold(
                             Duration::ZERO,
                             |acc, (result, day, part, elapsed)| {
+                                let time_color = match elapsed {
+                                    x if x <= Duration::from_millis(5) => "\x1b[92m",
+                                    x if x <= Duration::from_millis(20) => "\x1b[32m",
+                                    x if x <= Duration::from_millis(40) => "\x1b[93m",
+                                    x if x <= Duration::from_millis(60) => "\x1b[33m",
+                                    x if x <= Duration::from_millis(100) => "\x1b[91m",
+                                    _ => "\x1b[31m",
+                                };
                                 println!(
-                                    "{} {} took {:#?} to run. Result: {}",
-                                    day, part, elapsed, result
+                                    "{} {} took {}{:>12?}\x1b[0m to run. Result: {}",
+                                    day, part, time_color, elapsed, result
                                 );
                                 acc + elapsed
                             },
