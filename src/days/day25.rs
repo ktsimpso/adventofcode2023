@@ -5,14 +5,15 @@ use crate::libs::{
 };
 use chumsky::{error::Rich, extra, primitive::just, IterParser, Parser};
 use clap::Args;
+use either::Either;
 use itertools::Itertools;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use std::{
     cell::LazyCell,
-    collections::{BTreeMap, HashSet, VecDeque},
-    iter::once,
+    collections::{HashMap, HashSet, VecDeque},
+    iter::{empty, once},
+    sync::Arc,
 };
-use tap::Tap;
 
 pub const DAY_25: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     Box::new(
@@ -28,7 +29,7 @@ pub const DAY_25: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     )
 });
 
-struct Input(BTreeMap<String, HashSet<String>>);
+struct Input(HashMap<Arc<str>, HashSet<Arc<str>>>);
 
 impl StringParse for Input {
     fn parse<'a>() -> impl Parser<'a, &'a str, Self, extra::Err<Rich<'a, char>>> {
@@ -40,32 +41,27 @@ impl StringParse for Input {
                     .collect::<HashSet<_>>(),
             )
             .map(|(key, values): (&str, HashSet<&str>)| {
-                let mut map = BTreeMap::new();
+                let mut map = HashMap::new();
                 map.insert(
-                    key.to_string(),
-                    values.clone().into_iter().map(|s| s.to_string()).collect(),
+                    Arc::from(key),
+                    values.clone().into_iter().map(|s| Arc::from(s)).collect(),
                 );
                 values.clone().into_iter().fold(map, |mut acc, value| {
-                    acc.insert(value.to_string(), HashSet::from_iter(once(key.to_string())));
+                    acc.insert(Arc::from(value), HashSet::from_iter(once(Arc::from(key))));
                     acc
                 })
             });
         parse_lines(component)
             .map(|maps| {
                 maps.into_iter().fold(
-                    BTreeMap::new(),
-                    |acc: BTreeMap<String, HashSet<String>>, map| {
-                        acc.into_iter()
-                            .merge_join_by(map.into_iter(), |(key1, _), (key2, _)| key1.cmp(key2))
-                            .map(|result| match result {
-                                itertools::EitherOrBoth::Both((key, value1), (_, value2)) => (
-                                    key,
-                                    value2.union(&value1).cloned().collect::<HashSet<String>>(),
-                                ),
-                                itertools::EitherOrBoth::Left((key, set)) => (key, set),
-                                itertools::EitherOrBoth::Right((key, set)) => (key, set),
-                            })
-                            .collect()
+                    HashMap::new(),
+                    |mut acc: HashMap<Arc<str>, HashSet<Arc<str>>>, map| {
+                        map.into_iter().for_each(|(key, value)| {
+                            let entry = acc.entry(key).or_insert_with(|| HashSet::new());
+                            let result = entry.union(&value).cloned().collect();
+                            *entry = result;
+                        });
+                        acc
                     },
                 )
             })
@@ -87,35 +83,24 @@ impl Problem<Input, CommandLineArguments> for Day25 {
             .keys()
             .par_bridge()
             .map(|key| find_all_shortest_paths(key, &input.0))
-            .flat_map(|paths| paths.values().cloned().collect::<Vec<_>>())
+            .flat_map(|paths| {
+                let mut map = HashMap::new();
+                paths.calculate_weighted_paths(&mut map);
+                map
+            })
             .fold(
-                || BTreeMap::new(),
-                |mut acc, path| {
-                    path.into_iter()
-                        .map_windows(|[first, second]| {
-                            let [first, second] =
-                                [first.clone(), second.clone()].tap_mut(|v| v.sort());
-                            (first, second)
-                        })
-                        .for_each(|pair| {
-                            *acc.entry(pair).or_insert(0usize) += 1;
-                        });
+                || HashMap::new(),
+                |mut acc, (key, value)| {
+                    *acc.entry(key).or_insert(0) += value;
                     acc
                 },
             )
             .reduce(
-                || BTreeMap::new(),
-                |a, b| {
-                    a.into_iter()
-                        .merge_join_by(b.into_iter(), |(key1, _), (key2, _)| key1.cmp(key2))
-                        .map(|result| match result {
-                            itertools::EitherOrBoth::Both((key, value1), (_, value2)) => {
-                                (key, value1 + value2)
-                            }
-                            itertools::EitherOrBoth::Left(result) => result,
-                            itertools::EitherOrBoth::Right(result) => result,
-                        })
-                        .collect()
+                || HashMap::new(),
+                |mut a, b| {
+                    b.into_iter()
+                        .for_each(|(key, value)| *a.entry(key).or_insert(0) += value);
+                    a
                 },
             )
             .into_iter()
@@ -132,39 +117,90 @@ impl Problem<Input, CommandLineArguments> for Day25 {
     }
 }
 
-fn find_all_shortest_paths(
-    start: &String,
-    graph: &BTreeMap<String, HashSet<String>>,
-) -> BTreeMap<(String, String), Vec<String>> {
+fn find_all_shortest_paths<'a>(
+    start: &'a Arc<str>,
+    graph: &'a HashMap<Arc<str>, HashSet<Arc<str>>>,
+) -> Node<'a> {
     let mut visited = HashSet::new();
-    let mut paths = BTreeMap::new();
+    let mut paths = HashMap::new();
     let mut queue = VecDeque::new();
-    queue.push_back((start, Vec::new()));
+    queue.push_back((start, None));
 
-    while let Some((current, path)) = queue.pop_front() {
+    while let Some((current, parent)) = queue.pop_front() {
         if visited.contains(current) {
             continue;
         }
 
         visited.insert(current);
 
-        let next_path = path.clone().tap_mut(|p| p.push(current.clone()));
-
-        paths.insert((start.clone(), current.clone()), path);
+        parent.into_iter().for_each(|parent| {
+            paths
+                .entry(parent)
+                .or_insert_with(|| Vec::new())
+                .push(current)
+        });
 
         graph
             .get(current)
             .expect("Node exists")
             .into_iter()
             .filter(|next| !visited.contains(next))
-            .for_each(|next| queue.push_back((next, next_path.clone())));
+            .for_each(|next| queue.push_back((next, Some(current))));
     }
 
-    paths
+    Node::from_map_and_root(&paths, start)
 }
 
-fn is_graph_disjoint(graph: &BTreeMap<String, HashSet<String>>) -> Option<(usize, usize)> {
-    let first = graph.first_key_value().expect("At least one").0;
+struct Node<'a> {
+    current: &'a Arc<str>,
+    children: Vec<Node<'a>>,
+}
+
+impl<'a> Node<'a> {
+    fn from_map_and_root(
+        map: &HashMap<&'a Arc<str>, Vec<&'a Arc<str>>>,
+        root: &'a Arc<str>,
+    ) -> Self {
+        let children = map
+            .get(root)
+            .map(|children| Either::Left(children.into_iter()))
+            .unwrap_or_else(|| Either::Right(empty()))
+            .map(|child| Node::from_map_and_root(map, child))
+            .collect();
+        Node {
+            current: root,
+            children,
+        }
+    }
+
+    fn calculate_weighted_paths(
+        &self,
+        map: &mut HashMap<(&'a Arc<str>, &'a Arc<str>), usize>,
+    ) -> usize {
+        1 + self
+            .children
+            .iter()
+            .map(|child| {
+                let result = child.calculate_weighted_paths(map);
+
+                map.insert(get_cononical_edge(&self.current, &child.current), result);
+
+                result
+            })
+            .sum::<usize>()
+    }
+}
+
+fn get_cononical_edge<'a>(a: &'a Arc<str>, b: &'a Arc<str>) -> (&'a Arc<str>, &'a Arc<str>) {
+    if a < b {
+        (a, b)
+    } else {
+        (b, a)
+    }
+}
+
+fn is_graph_disjoint(graph: &HashMap<Arc<str>, HashSet<Arc<str>>>) -> Option<(usize, usize)> {
+    let first = graph.keys().next().expect("At least one");
     let mut visited = HashSet::new();
     let mut queue = VecDeque::new();
     queue.push_back(first);
@@ -190,10 +226,10 @@ fn is_graph_disjoint(graph: &BTreeMap<String, HashSet<String>>) -> Option<(usize
 }
 
 fn break_connection(
-    mut graph: BTreeMap<String, HashSet<String>>,
-    first: &String,
-    second: &String,
-) -> BTreeMap<String, HashSet<String>> {
+    mut graph: HashMap<Arc<str>, HashSet<Arc<str>>>,
+    first: &Arc<str>,
+    second: &Arc<str>,
+) -> HashMap<Arc<str>, HashSet<Arc<str>>> {
     graph.get_mut(first).expect("Exists").remove(second);
     graph.get_mut(second).expect("Exists").remove(first);
     graph
