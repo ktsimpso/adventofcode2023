@@ -66,10 +66,10 @@ impl Problem<Input, CommandLineArguments> for Day21 {
     fn run(input: Input, arguments: &CommandLineArguments) -> Self::Output {
         // TODO: make these channels and broadcast the original iterator
         let garden_walk = WalkGarden::new(&input.0);
-        if arguments.steps < input.0.len() * 9 - (arguments.steps % input.0.len()) {
+        if arguments.steps < input.0.len() * 8 - (arguments.steps % input.0.len()) {
             garden_walk.skip(arguments.steps).next()
         } else {
-            find_quadratic_cycle(garden_walk, arguments.steps, input.0.len(), 2)
+            find_quadratic_cycle(garden_walk, arguments.steps, input.0.len(), 1)
         }
         .expect("Result exists")
     }
@@ -196,7 +196,6 @@ impl<'a> Iterator for WalkGarden<'a> {
             }
 
             get_valid_transitions(&node, self.field)
-                .into_iter()
                 .filter(|new| !self.visited.contains_key(new))
                 .for_each(|new_node| self.queue.push_back((new_node, distance + 1)));
 
@@ -257,10 +256,10 @@ impl<'a> WalkGarden<'a> {
     }
 }
 
-fn get_valid_transitions(
-    point: &ExpandiblePoint,
-    field: &Vec<Vec<Terrain>>,
-) -> Vec<ExpandiblePoint> {
+fn get_valid_transitions<'a>(
+    point: &'a ExpandiblePoint,
+    field: &'a Vec<Vec<Terrain>>,
+) -> impl Iterator<Item = ExpandiblePoint> + 'a {
     CARDINAL_DIRECTIONS
         .into_iter()
         .map(|direction| (direction, point.point.get_adjacent_wrapping(&direction)))
@@ -304,9 +303,11 @@ fn get_valid_transitions(
                 _ => unreachable!(),
             },
         })
-        .collect()
 }
 
-fn get_terrain_from_point(point: &BoundedPoint, field: &Vec<Vec<Terrain>>) -> Option<Terrain> {
-    field.get(point.y).and_then(|row| row.get(point.x).cloned())
+fn get_terrain_from_point<'a>(
+    point: &BoundedPoint,
+    field: &'a Vec<Vec<Terrain>>,
+) -> Option<&'a Terrain> {
+    field.get(point.y).and_then(|row| row.get(point.x))
 }
