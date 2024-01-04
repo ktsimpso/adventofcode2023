@@ -11,11 +11,11 @@ use chumsky::{
     Parser,
 };
 use clap::Args;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{
-    cell::LazyCell,
-    collections::{BTreeSet, HashMap, HashSet, VecDeque},
+    cell::{LazyCell, Ref, RefCell, RefMut},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
 };
-use tap::Tap;
 
 pub const DAY_23: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     Box::new(
@@ -26,11 +26,17 @@ pub const DAY_23: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
         )
         .with_part(
             "Slopes are too slippery to climb",
-            CommandLineArguments { slippery: true },
+            CommandLineArguments {
+                slippery: true,
+                parallel_depth: 0,
+            },
         )
         .with_part(
             "Slopes are climbable",
-            CommandLineArguments { slippery: false },
+            CommandLineArguments {
+                slippery: false,
+                parallel_depth: 15,
+            },
         ),
     )
 });
@@ -65,6 +71,9 @@ impl StringParse for Input {
 struct CommandLineArguments {
     #[arg(short, long, help = "Whether the slopes are slippery or not")]
     slippery: bool,
+
+    #[arg(short, long, help = "The max depth to parallelize the path finding")]
+    parallel_depth: usize,
 }
 
 struct Day23 {}
@@ -109,7 +118,17 @@ impl Problem<Input, CommandLineArguments> for Day23 {
             .expect("End Exists");
 
         let sparse = sparse_graph(&start, &end, &input.0, &arguments.slippery);
-        longest_path(&start, &end, &HashSet::new(), &sparse).expect("Solution exists")
+        let (point_to_u64, encoded) = encode_graph(&sparse);
+
+        longest_path(
+            *point_to_u64.get(&start).expect("exists"),
+            *point_to_u64.get(&end).expect("exists"),
+            0,
+            &encoded,
+            0,
+            &arguments.parallel_depth,
+        )
+        .expect("Solution exists")
     }
 }
 
@@ -173,32 +192,136 @@ fn sparse_graph(
             });
     }
 
-    results
+    let mut current = end.clone();
+    let results = RefCell::new(results);
+    let get_count =
+        |results: Ref<HashMap<BoundedPoint, BTreeSet<_>>>, current: &BoundedPoint| -> usize {
+            results
+                .values()
+                .filter(|points| points.iter().any(|(point, _)| point == current))
+                .count()
+        };
+    let filter_current = |mut results: RefMut<HashMap<BoundedPoint, BTreeSet<_>>>,
+                          current: &BoundedPoint|
+     -> BoundedPoint {
+        results
+            .iter_mut()
+            .find(|(_, points)| {
+                points
+                    .iter()
+                    .any(|(point, _): &(BoundedPoint, usize)| point == current)
+            })
+            .map(|(key, points)| {
+                points.retain(|(point, _)| point == current);
+                key
+            })
+            .expect("Exists")
+            .clone()
+    };
+    while get_count(results.borrow(), &current) == 1 {
+        current = filter_current(results.borrow_mut(), &current);
+    }
+
+    results.into_inner()
+}
+
+fn encode_graph(
+    sparse: &HashMap<BoundedPoint, BTreeSet<(BoundedPoint, usize)>>,
+) -> (
+    BTreeMap<BoundedPoint, u64>,
+    BTreeMap<u64, BTreeSet<(u64, usize)>>,
+) {
+    let point_to_u64 = sparse
+        .iter()
+        .fold(
+            (BTreeMap::new(), 0usize),
+            |(mut map, mut largest_index): (BTreeMap<BoundedPoint, u64>, usize), (key, values)| {
+                if !map.contains_key(key) {
+                    let key_value = 1u64 << largest_index;
+                    map.insert(key.clone(), key_value);
+                    largest_index += 1;
+                }
+
+                values.into_iter().for_each(|(key, _)| {
+                    if !map.contains_key(key) {
+                        let key_value = 1u64 << largest_index;
+                        map.insert(key.clone(), key_value);
+                        largest_index += 1;
+                    }
+                });
+
+                (map, largest_index)
+            },
+        )
+        .0;
+
+    let result = sparse
+        .into_iter()
+        .map(|(key, values)| {
+            let new_key = *point_to_u64.get(key).expect("exists");
+            let new_values = values
+                .into_iter()
+                .map(|(key, length)| (*point_to_u64.get(key).expect("Exists"), *length))
+                .collect();
+
+            (new_key, new_values)
+        })
+        .collect();
+
+    (point_to_u64, result)
 }
 
 fn longest_path(
-    current: &BoundedPoint,
-    target: &BoundedPoint,
-    visited: &HashSet<BoundedPoint>,
-    sparse: &HashMap<BoundedPoint, BTreeSet<(BoundedPoint, usize)>>,
+    current: u64,
+    target: u64,
+    visited: u64,
+    encoded: &BTreeMap<u64, BTreeSet<(u64, usize)>>,
+    depth: usize,
+    max_parallel_depth: &usize,
 ) -> Option<usize> {
     if current == target {
         return Some(0);
     }
 
-    let new_visited = visited.clone().tap_mut(|v| {
-        v.insert(current.clone());
-    });
+    let new_visited = visited | current;
 
-    sparse
-        .get(current)
-        .expect("Exists")
-        .into_iter()
-        .filter(|(new_point, _)| !new_visited.contains(new_point))
-        .filter_map(|(new_point, count)| {
-            longest_path(&new_point, target, &new_visited, sparse).map(|value| value + count)
-        })
-        .max()
+    if &depth < max_parallel_depth {
+        encoded
+            .get(&current)
+            .expect("Exists")
+            .into_par_iter()
+            .filter(|(new_point, _)| new_visited & new_point == 0)
+            .filter_map(|(new_point, count)| {
+                longest_path(
+                    *new_point,
+                    target,
+                    new_visited,
+                    encoded,
+                    depth + 1,
+                    max_parallel_depth,
+                )
+                .map(|value| value + count)
+            })
+            .max()
+    } else {
+        encoded
+            .get(&current)
+            .expect("Exists")
+            .into_iter()
+            .filter(|(new_point, _)| new_visited & new_point == 0)
+            .filter_map(|(new_point, count)| {
+                longest_path(
+                    *new_point,
+                    target,
+                    new_visited,
+                    encoded,
+                    depth + 1,
+                    max_parallel_depth,
+                )
+                .map(|value| value + count)
+            })
+            .max()
+    }
 }
 
 fn get_adjacent_tiles(
