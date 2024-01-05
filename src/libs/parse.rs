@@ -14,6 +14,7 @@ use chumsky::{
     IterParser, Parser,
 };
 use itertools::Itertools;
+use ndarray::Array2;
 use tap::Tap;
 
 pub trait StringParse: Sized {
@@ -114,6 +115,18 @@ pub fn parse_table<'a, T>(
     item_parser: impl Parser<'a, &'a str, T, extra::Err<Rich<'a, char>>>,
 ) -> impl Parser<'a, &'a str, Vec<Vec<T>>, extra::Err<Rich<'a, char>>> {
     parse_lines(item_parser.repeated().at_least(1).collect())
+}
+
+pub fn parse_table2<'a, T>(
+    item_parser: impl Parser<'a, &'a str, T, extra::Err<Rich<'a, char>>>,
+) -> impl Parser<'a, &'a str, Array2<T>, extra::Err<Rich<'a, char>>> {
+    parse_table(item_parser).try_map(|items, span| {
+        let columns = items.first().expect("At least one row").len();
+        let rows = items.len();
+
+        Array2::from_shape_vec((rows, columns), items.into_iter().flatten().collect())
+            .map_err(|op| Rich::custom(span, op))
+    })
 }
 
 // Note, don't use a parser with a newline delimiter and allow_trailing with this parser

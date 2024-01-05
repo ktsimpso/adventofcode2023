@@ -1,6 +1,6 @@
 use crate::libs::{
     cli::{flag_arg, single_arg, CliArgs, CliProblem, Command},
-    parse::{parse_table, StringParse},
+    parse::{parse_table2, StringParse},
     problem::Problem,
 };
 use chumsky::{
@@ -10,12 +10,10 @@ use chumsky::{
     Parser,
 };
 use clap::{value_parser, Arg, ArgMatches};
-use either::Either;
 use itertools::Itertools;
-use std::{
-    cell::LazyCell,
-    collections::{BTreeMap, HashMap},
-};
+use ndarray::Array2;
+use std::{cell::LazyCell, collections::HashMap, rc::Rc};
+use tap::Pipe;
 
 pub const DAY_14: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     Box::new(
@@ -37,7 +35,7 @@ pub const DAY_14: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     )
 });
 
-struct Input(Vec<Vec<RockField>>);
+struct Input(Array2<RockField>);
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 enum RockField {
@@ -53,7 +51,7 @@ impl StringParse for Input {
             just("O").to(RockField::MovableRock),
             just(".").to(RockField::Empty),
         ));
-        parse_table(rock_field).map(Input)
+        parse_table2(rock_field).map(Input)
     }
 }
 
@@ -109,44 +107,30 @@ impl Problem<Input, CommandLineArguments> for Day14 {
 
     fn run(input: Input, arguments: &CommandLineArguments) -> Self::Output {
         match arguments.tilt {
-            Tilt::North => score(&fall_north(&input.0)),
+            Tilt::North => score(&fall_north(input.0)),
             Tilt::Tumble(n) => {
-                let mut field = input.0;
+                let mut field = Rc::from(input.0);
                 let mut fields = HashMap::new();
-                let mut target: Option<Vec<Vec<RockField>>> = None;
-                let mut first_index = None;
                 let mut second_index = None;
-
-                fields.insert(field.clone(), 1);
+                let mut indexed_field = Vec::new();
 
                 for index in 0..n {
-                    field = tumble(&field);
-                    match target {
-                        Some(ref t) => {
-                            if t == &field {
-                                second_index = Some(index);
-                                break;
-                            }
-                        }
-                        None => {
-                            let count = fields.entry(field.clone()).or_insert(0);
-                            *count += 1;
-                            if *count == 2 {
-                                target = Some(field.clone());
-                                first_index = Some(index);
-                            }
-                        }
+                    field = Rc::from(tumble(field.as_ref().clone()));
+                    if fields.contains_key(&field) {
+                        second_index = Some(index);
+                        break;
                     }
+
+                    indexed_field.push(field.clone());
+                    fields.insert(field.clone(), index);
                 }
 
-                match (first_index, second_index) {
-                    (Some(first), Some(second)) => {
+                match second_index {
+                    Some(second) => {
+                        let first = fields.get(&field).expect("exists");
                         let cycle_length = second - first;
-                        let new_target = (n - second - 1) % cycle_length;
-                        for _ in 0..new_target {
-                            field = tumble(&field);
-                        }
-                        score(&field)
+                        let new_target = first + ((n - second - 1) % cycle_length);
+                        score(&indexed_field.get(new_target).expect("exists"))
                     }
                     _ => score(&field),
                 }
@@ -155,97 +139,106 @@ impl Problem<Input, CommandLineArguments> for Day14 {
     }
 }
 
-fn score(field: &Vec<Vec<RockField>>) -> usize {
+fn tumble(field: Array2<RockField>) -> Array2<RockField> {
+    fall_north(field)
+        .pipe(fall_west)
+        .pipe(fall_south)
+        .pipe(fall_east)
+}
+
+fn fall_east(mut field: Array2<RockField>) -> Array2<RockField> {
     field
+        .rows_mut()
         .into_iter()
-        .rev()
+        .for_each(|row| fall(&mut row.into_iter(), east_rocks));
+
+    field
+}
+
+fn fall_west(mut field: Array2<RockField>) -> Array2<RockField> {
+    field
+        .rows_mut()
+        .into_iter()
+        .for_each(|row| fall(&mut row.into_iter(), west_rocks));
+
+    field
+}
+
+fn fall_north(mut field: Array2<RockField>) -> Array2<RockField> {
+    field
+        .columns_mut()
+        .into_iter()
+        .for_each(|column| fall(&mut column.into_iter(), west_rocks));
+
+    field
+}
+
+fn fall_south(mut field: Array2<RockField>) -> Array2<RockField> {
+    field
+        .columns_mut()
+        .into_iter()
+        .for_each(|column| fall(&mut column.into_iter(), east_rocks));
+
+    field
+}
+
+fn score(field: &Array2<RockField>) -> usize {
+    let (max, _) = field.dim();
+    field
+        .rows()
+        .into_iter()
         .enumerate()
         .map(|(index, row)| {
             row.into_iter()
                 .filter(|patch| patch == &&RockField::MovableRock)
                 .count()
-                * (index + 1)
+                * (max - index)
         })
         .sum()
 }
 
-fn tumble(field: &Vec<Vec<RockField>>) -> Vec<Vec<RockField>> {
-    fall_east(&fall_south(&fall_west(&fall_north(field))))
-}
-
-fn fall_east(field: &Vec<Vec<RockField>>) -> Vec<Vec<RockField>> {
-    fall(field, east_rocks)
-}
-
-fn fall_west(field: &Vec<Vec<RockField>>) -> Vec<Vec<RockField>> {
-    fall(field, west_rocks)
-}
-
-fn fall_north(field: &Vec<Vec<RockField>>) -> Vec<Vec<RockField>> {
-    transpose_field(&fall_west(&transpose_field(field)))
-}
-
-fn fall_south(field: &Vec<Vec<RockField>>) -> Vec<Vec<RockField>> {
-    transpose_field(&fall_east(&transpose_field(field)))
-}
-
-fn fall(
-    field: &Vec<Vec<RockField>>,
-    fall_direction: fn(usize, usize) -> Vec<RockField>,
-) -> Vec<Vec<RockField>> {
-    field
-        .into_iter()
-        .map(|row| {
-            row.into_iter()
-                .group_by(|patch| match patch {
-                    RockField::Rock => false,
-                    _ => true,
-                })
-                .into_iter()
-                .flat_map(|(moving, grouping)| {
-                    if moving {
-                        let group = grouping.collect::<Vec<_>>();
-                        let total = group.len();
-                        let movable_rocks_count = group
-                            .into_iter()
-                            .filter(|patch| patch == &&RockField::MovableRock)
-                            .count();
-                        Either::Left(fall_direction(movable_rocks_count, total).into_iter())
-                    } else {
-                        Either::Right(grouping.cloned())
-                    }
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect()
-}
-
-fn west_rocks(movable_rocks_count: usize, total: usize) -> Vec<RockField> {
-    let mut movable_rocks = vec![RockField::MovableRock; movable_rocks_count];
-    let empty = vec![RockField::Empty; total - movable_rocks_count];
-    movable_rocks.extend(empty.into_iter());
-    movable_rocks
-}
-
-fn east_rocks(movable_rocks_count: usize, total: usize) -> Vec<RockField> {
-    let movable_rocks = vec![RockField::MovableRock; movable_rocks_count];
-    let mut empty = vec![RockField::Empty; total - movable_rocks_count];
-    empty.extend(movable_rocks.into_iter());
-    empty
-}
-
-fn transpose_field(field: &Vec<Vec<RockField>>) -> Vec<Vec<RockField>> {
-    field
-        .into_iter()
-        .flat_map(|row| row.into_iter().enumerate())
-        .fold(BTreeMap::new(), |mut acc, (x, value)| {
-            acc.entry(x)
-                .or_insert_with(|| Vec::new())
-                .push(value.clone());
-            acc
+fn fall<'a, T>(
+    dimension: &'a mut impl Iterator<Item = &'a mut RockField>,
+    rock_fall: fn(usize, usize) -> T,
+) where
+    T: FnMut((usize, &mut RockField)),
+{
+    dimension
+        .group_by(|patch| match patch {
+            RockField::Rock => false,
+            _ => true,
         })
         .into_iter()
-        .sorted_by(|(x1, _), (x2, _)| x1.cmp(x2))
-        .map(|(_, column)| column)
-        .collect()
+        .filter(|(moving, _)| *moving)
+        .map(|(_, section)| section.collect::<Vec<_>>())
+        .for_each(|section| {
+            let total = section.len();
+            let movable_rocks = section
+                .iter()
+                .filter(|patch| ***patch == RockField::MovableRock)
+                .count();
+            let fall_direction = rock_fall(movable_rocks, total);
+            section.into_iter().enumerate().for_each(fall_direction)
+        });
+}
+
+fn west_rocks(movable_rocks: usize, _total: usize) -> impl FnMut((usize, &mut RockField)) {
+    move |(index, patch)| {
+        if index < movable_rocks {
+            *patch = RockField::MovableRock
+        } else {
+            *patch = RockField::Empty
+        }
+    }
+}
+
+fn east_rocks(movable_rocks: usize, total: usize) -> impl FnMut((usize, &mut RockField)) {
+    let spaces = total - movable_rocks;
+    move |(index, patch)| {
+        if index < spaces {
+            *patch = RockField::Empty
+        } else {
+            *patch = RockField::MovableRock
+        }
+    }
 }
