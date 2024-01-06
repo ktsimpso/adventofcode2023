@@ -10,11 +10,8 @@ use chumsky::{
     IterParser, Parser,
 };
 use clap::Args;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::{
-    cell::LazyCell,
-    collections::{HashMap, VecDeque},
-};
+use ndarray::Array3;
+use std::cell::LazyCell;
 use tap::Tap;
 
 pub const DAY_12: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
@@ -80,7 +77,7 @@ impl Problem<Input, CommandLineArguments> for Day12 {
     fn run(input: Input, arguments: &CommandLineArguments) -> Self::Output {
         input
             .0
-            .par_iter()
+            .iter()
             .map(|condition_record| ConditionRecord {
                 springs: condition_record
                     .springs
@@ -98,75 +95,62 @@ impl Problem<Input, CommandLineArguments> for Day12 {
 }
 
 fn find_groupings(condition_record: ConditionRecord) -> usize {
-    count_valid_states(
-        condition_record.springs.into_iter().collect(),
-        &condition_record.key.into_iter().collect(),
+    let max_remaining = condition_record.key.iter().max().expect("exists");
+    let mut cache = Array3::from_elem(
+        (
+            condition_record.springs.len() + 1,
+            condition_record.key.len() + 1,
+            *max_remaining + 1,
+        ),
+        None,
+    );
+    let result = count_valid_states(
+        &condition_record.springs.as_slice(),
+        &condition_record.key.as_slice(),
         0,
-        &mut HashMap::new(),
-    )
+        &mut cache,
+    );
+    result
 }
 
 fn count_valid_states(
-    remaining: VecDeque<SpringCondition>,
-    remaining_key: &VecDeque<usize>,
+    remaining: &[SpringCondition],
+    remaining_key: &[usize],
     current_key_count: usize,
-    cache: &mut HashMap<(VecDeque<SpringCondition>, VecDeque<usize>, usize), usize>,
+    cache: &mut Array3<Option<usize>>,
 ) -> usize {
-    match cache.get(&(remaining.clone(), remaining_key.clone(), current_key_count)) {
+    match cache
+        .get((remaining.len(), remaining_key.len(), current_key_count))
+        .expect("exists")
+    {
         Some(result) => *result,
         None => {
-            let mut new_remaining = remaining.clone();
-
-            let result = if let Some(next) = new_remaining.pop_front() {
+            let result = if let Some(next) = remaining.get(0) {
                 match next {
-                    SpringCondition::Operational => {
-                        if current_key_count == 0 {
-                            count_valid_states(
-                                new_remaining,
-                                remaining_key,
-                                current_key_count,
-                                cache,
-                            )
-                        } else if let Some(key) = remaining_key.front() {
-                            let mut new_remaining_key = remaining_key.clone();
-                            new_remaining_key.pop_front();
-                            if current_key_count == *key {
-                                count_valid_states(new_remaining, &new_remaining_key, 0, cache)
-                            } else {
-                                0
-                            }
-                        } else {
-                            0
-                        }
-                    }
+                    SpringCondition::Operational => calculate_operational_spring(
+                        remaining,
+                        remaining_key,
+                        current_key_count,
+                        cache,
+                    ),
                     SpringCondition::Broken => {
-                        let new_current_key_count = current_key_count + 1;
-                        if let Some(key) = remaining_key.front() {
-                            if new_current_key_count > *key {
-                                0
-                            } else {
-                                count_valid_states(
-                                    new_remaining,
-                                    remaining_key,
-                                    new_current_key_count,
-                                    cache,
-                                )
-                            }
-                        } else {
-                            0
-                        }
+                        calculate_broken_spring(remaining, remaining_key, current_key_count, cache)
                     }
                     SpringCondition::Unknown => {
-                        let mut operational = new_remaining.clone();
-                        operational.push_front(SpringCondition::Operational);
-                        new_remaining.push_front(SpringCondition::Broken);
-                        count_valid_states(operational, remaining_key, current_key_count, cache)
-                            + count_valid_states(
-                                new_remaining,
-                                remaining_key,
-                                current_key_count,
-                                cache,
-                            )
+                        let operational = calculate_operational_spring(
+                            remaining,
+                            remaining_key,
+                            current_key_count,
+                            cache,
+                        );
+                        let broken = calculate_broken_spring(
+                            remaining,
+                            remaining_key,
+                            current_key_count,
+                            cache,
+                        );
+
+                        operational + broken
                     }
                 }
             } else if remaining_key.len() > 1 {
@@ -180,11 +164,47 @@ fn count_valid_states(
             } else {
                 1
             };
-            cache.insert(
-                (remaining, remaining_key.clone(), current_key_count),
-                result,
-            );
+            *cache
+                .get_mut((remaining.len(), remaining_key.len(), current_key_count))
+                .expect("exists") = Some(result);
             return result;
         }
+    }
+}
+
+fn calculate_operational_spring(
+    remaining: &[SpringCondition],
+    remaining_key: &[usize],
+    current_key_count: usize,
+    cache: &mut Array3<Option<usize>>,
+) -> usize {
+    if current_key_count == 0 {
+        count_valid_states(&remaining[1..], remaining_key, current_key_count, cache)
+    } else if let Some(key) = remaining_key.get(0) {
+        if current_key_count == *key {
+            count_valid_states(&remaining[1..], &remaining_key[1..], 0, cache)
+        } else {
+            0
+        }
+    } else {
+        0
+    }
+}
+
+fn calculate_broken_spring(
+    remaining: &[SpringCondition],
+    remaining_key: &[usize],
+    current_key_count: usize,
+    cache: &mut Array3<Option<usize>>,
+) -> usize {
+    let new_current_key_count = current_key_count + 1;
+    if let Some(key) = remaining_key.get(0) {
+        if new_current_key_count > *key {
+            0
+        } else {
+            count_valid_states(&remaining[1..], remaining_key, new_current_key_count, cache)
+        }
+    } else {
+        0
     }
 }
