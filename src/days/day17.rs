@@ -1,13 +1,14 @@
 use crate::libs::{
     cli::{CliProblem, Command},
     graph::{BoundedPoint, PointDirection, CARDINAL_DIRECTIONS},
-    parse::{parse_digit, parse_table, StringParse},
+    parse::{parse_digit, parse_table2, StringParse},
     problem::Problem,
 };
 use chumsky::{error::Rich, extra, Parser};
 use clap::Args;
+use ndarray::{Array2, Array3};
 use priority_queue::PriorityQueue;
-use std::{cell::LazyCell, cmp::Ordering, collections::HashSet};
+use std::{cell::LazyCell, cmp::Reverse};
 
 pub const DAY_17: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     Box::new(
@@ -27,14 +28,14 @@ pub const DAY_17: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     )
 });
 
-struct Input(Vec<Vec<usize>>);
+struct Input(Array2<usize>);
 
 impl StringParse for Input {
     fn parse<'a>() -> impl Parser<'a, &'a str, Self, extra::Err<Rich<'a, char>>> {
         let digit = parse_digit().to_slice().try_map(move |number: &str, span| {
             usize::from_str_radix(number, 10).map_err(|op| Rich::custom(span, op))
         });
-        parse_table(digit).map(Input)
+        parse_table2(digit).map(Input)
     }
 }
 
@@ -48,58 +49,21 @@ struct CommandLineArguments {
 
 struct Day17 {}
 
-#[derive(PartialEq, Eq, Debug)]
-struct Path(Option<usize>);
-
-impl Ord for Path {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match (self.0, other.0) {
-            (None, None) => Ordering::Equal,
-            (None, Some(_)) => Ordering::Less,
-            (Some(_), None) => Ordering::Greater,
-            (Some(a), Some(b)) => b.cmp(&a),
-        }
-    }
-}
-
-impl PartialOrd for Path {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
 impl Problem<Input, CommandLineArguments> for Day17 {
     type Output = usize;
 
     fn run(input: Input, arguments: &CommandLineArguments) -> Self::Output {
-        let max_y = input.0.len() - 1;
-        let max_x = input.0.first().map(|row| row.len()).unwrap_or(0) - 1;
+        let max_y = input.0.dim().1 - 1;
+        let max_x = input.0.dim().0 - 1;
 
         let max_straight = arguments.max;
         let min_straight = arguments.min;
 
-        let mut unvisited = input
-            .0
-            .iter()
-            .enumerate()
-            .flat_map(|(y, row)| {
-                row.into_iter().enumerate().flat_map(move |(x, _)| {
-                    CARDINAL_DIRECTIONS
-                        .into_iter()
-                        .map(move |direction| (direction, BoundedPoint { x, y, max_x, max_y }))
-                })
-            })
-            .collect::<HashSet<_>>();
-
-        let mut distance = unvisited
-            .clone()
-            .into_iter()
-            .map(|(direction, point)| ((direction, point), Path(None)))
-            .collect::<PriorityQueue<_, _>>();
+        let mut queue = PriorityQueue::new();
 
         CARDINAL_DIRECTIONS.into_iter().for_each(|direction| {
-            distance.change_priority(
-                &(
+            queue.push(
+                (
                     direction,
                     BoundedPoint {
                         x: 0,
@@ -108,39 +72,46 @@ impl Problem<Input, CommandLineArguments> for Day17 {
                         max_y,
                     },
                 ),
-                Path(Some(0)),
+                Reverse(0),
             );
         });
 
         let mut result = None;
+        let mut visited = Array3::from_elem((max_x + 1, max_y + 1, 4), false);
 
-        while let Some(((direction, point), priority)) = distance.pop() {
-            if !unvisited.remove(&(direction, point)) {
+        while let Some(((direction, point), priority)) = queue.pop() {
+            if point.x == max_x && point.y == max_y {
+                result = Some(priority.0);
+                break;
+            }
+
+            let has_visited = visited
+                .get_mut((point.x, point.y, direction_to_index(&direction)))
+                .expect("Exists");
+            if *has_visited {
                 continue;
             }
 
-            if point.x == max_x && point.y == max_y {
-                result = priority.0;
-                break;
-            }
-
-            if priority.0.is_none() {
-                break;
-            }
+            *has_visited = true;
 
             get_valid_moves(direction, &point, &min_straight, &max_straight, &input.0)
-                .into_iter()
-                .filter(|(direction, point, _)| unvisited.contains(&(*direction, *point)))
+                .filter(|(direction, point, _)| {
+                    !visited
+                        .get((point.x, point.y, direction_to_index(direction)))
+                        .expect("Exists")
+                })
                 .for_each(|(direction, point, heat)| {
-                    let current_priority = distance
-                        .get_priority(&(direction, point))
-                        .expect("Priority exists");
-                    let new_priority = Path(match priority.0 {
-                        Some(current) => Some(current + heat),
-                        None => Some(heat),
-                    });
-                    if &new_priority > current_priority {
-                        distance.change_priority(&(direction, point), new_priority);
+                    let current_priority = queue.get_priority(&(direction, point));
+                    let new_priority = priority.0 + heat;
+                    match current_priority {
+                        Some(current) => {
+                            if new_priority < current.0 {
+                                queue.change_priority(&(direction, point), Reverse(new_priority));
+                            }
+                        }
+                        None => {
+                            queue.push((direction, point), Reverse(new_priority));
+                        }
                     };
                 });
         }
@@ -149,13 +120,23 @@ impl Problem<Input, CommandLineArguments> for Day17 {
     }
 }
 
-fn get_valid_moves(
+fn direction_to_index(direction: &PointDirection) -> usize {
+    match direction {
+        PointDirection::Up => 0,
+        PointDirection::Down => 1,
+        PointDirection::Left => 2,
+        PointDirection::Right => 3,
+        _ => unreachable!(),
+    }
+}
+
+fn get_valid_moves<'a>(
     direction: PointDirection,
-    point: &BoundedPoint,
-    min_straight: &usize,
-    max_straight: &usize,
-    pool: &Vec<Vec<usize>>,
-) -> Vec<(PointDirection, BoundedPoint, usize)> {
+    point: &'a BoundedPoint,
+    min_straight: &'a usize,
+    max_straight: &'a usize,
+    pool: &'a Array2<usize>,
+) -> impl Iterator<Item = (PointDirection, BoundedPoint, usize)> + 'a {
     get_valid_direction(
         direction.get_clockwise(),
         point,
@@ -170,7 +151,6 @@ fn get_valid_moves(
         max_straight,
         pool,
     ))
-    .collect()
 }
 
 fn get_valid_direction<'a>(
@@ -178,7 +158,7 @@ fn get_valid_direction<'a>(
     point: &'a BoundedPoint,
     min_straight: &'a usize,
     max_straight: &'a usize,
-    pool: &'a Vec<Vec<usize>>,
+    pool: &'a Array2<usize>,
 ) -> impl Iterator<Item = (PointDirection, BoundedPoint, usize)> + 'a {
     point
         .into_iter_direction(direction)
@@ -199,7 +179,6 @@ fn get_valid_direction<'a>(
         .map(|(_, value)| value)
 }
 
-fn get_heat(point: &BoundedPoint, pool: &Vec<Vec<usize>>) -> Option<usize> {
-    pool.get(point.y)
-        .and_then(|row| row.get(point.x).map(|value| *value))
+fn get_heat(point: &BoundedPoint, pool: &Array2<usize>) -> Option<usize> {
+    pool.get((point.x, point.y)).copied()
 }
