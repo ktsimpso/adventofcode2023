@@ -1,9 +1,10 @@
 use crate::libs::{
     cli::{CliProblem, Command},
-    graph::{BoundedPoint, PointDirection, CARDINAL_DIRECTIONS},
-    parse::{parse_table, StringParse},
+    graph::{PointDirection, CARDINAL_DIRECTIONS},
+    parse::{parse_table2, StringParse},
     problem::Problem,
 };
+use ahash::AHashSet;
 use chumsky::{
     error::Rich,
     extra,
@@ -12,10 +13,8 @@ use chumsky::{
 };
 use clap::Args;
 use itertools::Itertools;
-use std::{
-    cell::LazyCell,
-    collections::{HashMap, VecDeque},
-};
+use ndarray::Array2;
+use std::{cell::LazyCell, collections::VecDeque};
 
 pub const DAY_21: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     Box::new(
@@ -25,7 +24,7 @@ pub const DAY_21: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     )
 });
 
-struct Input(Vec<Vec<Terrain>>);
+struct Input(Array2<Terrain>);
 
 #[derive(Clone, PartialEq, Eq)]
 enum Terrain {
@@ -36,7 +35,8 @@ enum Terrain {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ExpandiblePoint {
-    point: BoundedPoint,
+    x: usize,
+    y: usize,
     vertical: isize,
     horizontal: isize,
 }
@@ -48,7 +48,7 @@ impl StringParse for Input {
             just("#").to(Terrain::Rock),
             just("S").to(Terrain::Start),
         ));
-        parse_table(terrain).map(Input)
+        parse_table2(terrain).map(Input)
     }
 }
 
@@ -66,10 +66,10 @@ impl Problem<Input, CommandLineArguments> for Day21 {
     fn run(input: Input, arguments: &CommandLineArguments) -> Self::Output {
         // TODO: make these channels and broadcast the original iterator
         let garden_walk = WalkGarden::new(&input.0);
-        if arguments.steps < input.0.len() * 8 - (arguments.steps % input.0.len()) {
+        if arguments.steps < input.0.dim().0 * 8 - (arguments.steps % input.0.dim().0) {
             garden_walk.skip(arguments.steps).next()
         } else {
-            find_quadratic_cycle(garden_walk, arguments.steps, input.0.len(), 1)
+            find_quadratic_cycle(garden_walk, arguments.steps, input.0.dim().0, 1)
         }
         .expect("Result exists")
     }
@@ -173,11 +173,13 @@ fn find_quadratic_cycle(
 
 struct WalkGarden<'a> {
     queue: VecDeque<(ExpandiblePoint, usize)>,
-    visited: HashMap<ExpandiblePoint, usize>,
+    visited: AHashSet<ExpandiblePoint>,
     max: usize,
     odd_count: isize,
     even_count: isize,
-    field: &'a Vec<Vec<Terrain>>,
+    field: &'a Array2<Terrain>,
+    max_x: usize,
+    max_y: usize,
 }
 
 impl<'a> Iterator for WalkGarden<'a> {
@@ -185,7 +187,7 @@ impl<'a> Iterator for WalkGarden<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some((node, distance)) = self.queue.pop_front() {
-            if self.visited.contains_key(&node) {
+            if self.visited.contains(&node) {
                 continue;
             }
 
@@ -195,11 +197,11 @@ impl<'a> Iterator for WalkGarden<'a> {
                 self.odd_count += 1;
             }
 
-            get_valid_transitions(&node, self.field)
-                .filter(|new| !self.visited.contains_key(new))
+            get_valid_transitions(&node, self.field, self.max_x, self.max_y)
+                .filter(|new| !self.visited.contains(new))
                 .for_each(|new_node| self.queue.push_back((new_node, distance + 1)));
 
-            self.visited.insert(node, distance);
+            self.visited.insert(node);
 
             if distance > self.max {
                 self.max = distance;
@@ -216,30 +218,28 @@ impl<'a> Iterator for WalkGarden<'a> {
 }
 
 impl<'a> WalkGarden<'a> {
-    fn new(field: &'a Vec<Vec<Terrain>>) -> Self {
-        let max_y = field.len() - 1;
-        let max_x = field.first().map(|row| row.len()).unwrap_or(0) - 1;
+    fn new(field: &'a Array2<Terrain>) -> Self {
+        let max_y = field.dim().1 - 1;
+        let max_x = field.dim().0 - 1;
         let start = field
-            .iter()
-            .enumerate()
-            .find_map(|(y, row)| {
-                row.into_iter().enumerate().find_map(|(x, plot)| {
-                    if plot == &Terrain::Start {
-                        Some(ExpandiblePoint {
-                            point: BoundedPoint { x, y, max_x, max_y },
-                            vertical: 0,
-                            horizontal: 0,
-                        })
-                    } else {
-                        None
-                    }
-                })
+            .indexed_iter()
+            .find_map(|((x, y), plot)| {
+                if plot == &Terrain::Start {
+                    Some(ExpandiblePoint {
+                        x,
+                        y,
+                        vertical: 0,
+                        horizontal: 0,
+                    })
+                } else {
+                    None
+                }
             })
             .expect("Start exists");
 
         let mut queue = VecDeque::new();
         queue.push_back((start, 0usize));
-        let visited = HashMap::new();
+        let visited = AHashSet::new();
 
         let max = 0;
         let odd_count: isize = 0;
@@ -252,62 +252,99 @@ impl<'a> WalkGarden<'a> {
             odd_count,
             even_count,
             field,
+            max_x,
+            max_y,
         }
+    }
+}
+
+fn wrapping_bounded_increase(item: usize, max: usize) -> (usize, bool) {
+    if item == max {
+        (0, true)
+    } else {
+        (item + 1, false)
+    }
+}
+
+fn wrapping_bounded_decrease(item: usize, max: usize) -> (usize, bool) {
+    if item == 0 {
+        (max, true)
+    } else {
+        (item - 1, false)
     }
 }
 
 fn get_valid_transitions<'a>(
     point: &'a ExpandiblePoint,
-    field: &'a Vec<Vec<Terrain>>,
+    field: &'a Array2<Terrain>,
+    max_x: usize,
+    max_y: usize,
 ) -> impl Iterator<Item = ExpandiblePoint> + 'a {
     CARDINAL_DIRECTIONS
         .into_iter()
-        .map(|direction| (direction, point.point.get_adjacent_wrapping(&direction)))
-        .zip(
-            CARDINAL_DIRECTIONS
-                .into_iter()
-                .map(|direction| point.point.get_adjacent(&direction)),
-        )
-        .filter(|((_, wrapping), _)| {
-            match get_terrain_from_point(wrapping, field).expect("Exists") {
+        .map(move |direction| match direction {
+            PointDirection::Up => {
+                let (y, wrapped) = wrapping_bounded_decrease(point.y, max_y);
+                let vertical = if wrapped {
+                    point.vertical - 1
+                } else {
+                    point.vertical
+                };
+
+                ExpandiblePoint {
+                    y,
+                    vertical,
+                    ..*point
+                }
+            }
+            PointDirection::Down => {
+                let (y, wrapped) = wrapping_bounded_increase(point.y, max_y);
+                let vertical = if wrapped {
+                    point.vertical + 1
+                } else {
+                    point.vertical
+                };
+
+                ExpandiblePoint {
+                    y,
+                    vertical,
+                    ..*point
+                }
+            }
+            PointDirection::Left => {
+                let (x, wrapped) = wrapping_bounded_decrease(point.x, max_x);
+                let horizontal = if wrapped {
+                    point.horizontal - 1
+                } else {
+                    point.horizontal
+                };
+
+                ExpandiblePoint {
+                    x,
+                    horizontal,
+                    ..*point
+                }
+            }
+            PointDirection::Right => {
+                let (x, wrapped) = wrapping_bounded_increase(point.x, max_x);
+                let horizontal = if wrapped {
+                    point.horizontal + 1
+                } else {
+                    point.horizontal
+                };
+
+                ExpandiblePoint {
+                    x,
+                    horizontal,
+                    ..*point
+                }
+            }
+            _ => unreachable!(),
+        })
+        .filter(
+            |new_point| match field.get((new_point.x, new_point.y)).expect("Exists") {
                 Terrain::Rock => false,
                 _ => true,
-            }
-        })
-        .map(|((direction, wrapping), bounded)| match bounded {
-            Some(_) => ExpandiblePoint {
-                point: wrapping,
-                ..*point
             },
-            None => match direction {
-                PointDirection::Up => ExpandiblePoint {
-                    point: wrapping,
-                    vertical: point.vertical - 1,
-                    ..*point
-                },
-                PointDirection::Down => ExpandiblePoint {
-                    point: wrapping,
-                    vertical: point.vertical + 1,
-                    ..*point
-                },
-                PointDirection::Left => ExpandiblePoint {
-                    point: wrapping,
-                    horizontal: point.horizontal - 1,
-                    ..*point
-                },
-                PointDirection::Right => ExpandiblePoint {
-                    point: wrapping,
-                    horizontal: point.horizontal + 1,
-                    ..*point
-                },
-                _ => unreachable!(),
-            },
-        })
-}
-
-fn get_terrain_from_point<'a>(
-    point: &BoundedPoint,
-    field: &'a Vec<Vec<Terrain>>,
-) -> Option<&'a Terrain> {
-    field.get(point.y).and_then(|row| row.get(point.x))
+        )
 }
