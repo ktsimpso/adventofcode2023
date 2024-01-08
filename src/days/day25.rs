@@ -5,14 +5,13 @@ use crate::libs::{
 };
 use chumsky::{error::Rich, extra, primitive::just, IterParser, Parser};
 use clap::Args;
-use either::Either;
 use itertools::Itertools;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use std::{
     cell::LazyCell,
     collections::{HashMap, HashSet, VecDeque},
-    iter::{empty, once},
-    sync::Arc,
+    iter::once,
+    rc::Rc,
 };
 
 pub const DAY_25: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
@@ -29,7 +28,7 @@ pub const DAY_25: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     )
 });
 
-struct Input(HashMap<Arc<str>, HashSet<Arc<str>>>);
+struct Input(HashMap<Rc<str>, HashSet<Rc<str>>>);
 
 impl StringParse for Input {
     fn parse<'a>() -> impl Parser<'a, &'a str, Self, extra::Err<Rich<'a, char>>> {
@@ -43,11 +42,11 @@ impl StringParse for Input {
             .map(|(key, values): (&str, HashSet<&str>)| {
                 let mut map = HashMap::new();
                 map.insert(
-                    Arc::from(key),
-                    values.clone().into_iter().map(|s| Arc::from(s)).collect(),
+                    Rc::from(key),
+                    values.clone().into_iter().map(|s| Rc::from(s)).collect(),
                 );
                 values.clone().into_iter().fold(map, |mut acc, value| {
-                    acc.insert(Arc::from(value), HashSet::from_iter(once(Arc::from(key))));
+                    acc.insert(Rc::from(value), HashSet::from_iter(once(Rc::from(key))));
                     acc
                 })
             });
@@ -55,7 +54,7 @@ impl StringParse for Input {
             .map(|maps| {
                 maps.into_iter().fold(
                     HashMap::new(),
-                    |mut acc: HashMap<Arc<str>, HashSet<Arc<str>>>, map| {
+                    |mut acc: HashMap<Rc<str>, HashSet<Rc<str>>>, map| {
                         map.into_iter().for_each(|(key, value)| {
                             let entry = acc.entry(key).or_insert_with(|| HashSet::new());
                             let result = entry.union(&value).cloned().collect();
@@ -78,21 +77,16 @@ impl Problem<Input, CommandLineArguments> for Day25 {
     type Output = usize;
 
     fn run(input: Input, _arguments: &CommandLineArguments) -> Self::Output {
-        let graph = input
-            .0
-            .keys()
+        let encoded = encode_graph(&input.0);
+        let graph = (0..encoded.len())
+            .into_iter()
             .par_bridge()
-            .map(|key| find_all_shortest_paths(key, &input.0))
-            .flat_map(|paths| {
-                let mut map = HashMap::new();
-                paths.calculate_weighted_paths(&mut map);
-                map
-            })
+            .map(|key| (key, find_all_shortest_paths(key, &encoded)))
             .fold(
                 || HashMap::new(),
-                |mut acc, (key, value)| {
-                    *acc.entry(key).or_insert(0) += value;
-                    acc
+                |mut edges, (key, tree)| {
+                    calculate_weighted_paths(&tree, key, &mut edges);
+                    edges
                 },
             )
             .reduce(
@@ -107,8 +101,8 @@ impl Problem<Input, CommandLineArguments> for Day25 {
             .sorted_by(|(_, a), (_, b)| b.cmp(a))
             .take(3)
             .map(|(key, _)| key)
-            .fold(input.0.clone(), |graph, (first, second)| {
-                break_connection(graph, &first, &second)
+            .fold(encoded, |graph, (first, second)| {
+                break_connection(graph, first, second)
             });
 
         is_graph_disjoint(&graph)
@@ -117,81 +111,93 @@ impl Problem<Input, CommandLineArguments> for Day25 {
     }
 }
 
-fn find_all_shortest_paths<'a>(
-    start: &'a Arc<str>,
-    graph: &'a HashMap<Arc<str>, HashSet<Arc<str>>>,
-) -> Node<'a> {
-    let mut visited = HashSet::new();
-    let mut paths = HashMap::new();
+fn encode_graph(graph: &HashMap<Rc<str>, HashSet<Rc<str>>>) -> Vec<Vec<usize>> {
+    let (str_to_usize, _) = graph.iter().fold(
+        (HashMap::new(), 0usize),
+        |(mut map, mut largest_index): (HashMap<&Rc<str>, usize>, usize), (key, values)| {
+            if !map.contains_key(key) {
+                let key_value = largest_index;
+                map.insert(key, key_value);
+                largest_index += 1;
+            }
+
+            values.into_iter().for_each(|key| {
+                if !map.contains_key(key) {
+                    let key_value = largest_index;
+                    map.insert(key, key_value);
+                    largest_index += 1;
+                }
+            });
+
+            (map, largest_index)
+        },
+    );
+
+    let mut result = vec![Vec::new(); str_to_usize.len()];
+
+    graph.into_iter().for_each(|(key, values)| {
+        let new_key = *str_to_usize.get(key).expect("exists");
+        let new_values = values
+            .into_iter()
+            .map(|key| *str_to_usize.get(key).expect("Exists"))
+            .collect();
+
+        *result.get_mut(new_key).expect("exists") = new_values
+    });
+
+    result
+}
+
+fn find_all_shortest_paths<'a>(start: usize, graph: &'a Vec<Vec<usize>>) -> Vec<Vec<usize>> {
+    let mut visited = vec![false; graph.len()];
+    let mut paths: Vec<Vec<usize>> = vec![Vec::new(); graph.len()];
     let mut queue = VecDeque::new();
     queue.push_back((start, None));
 
     while let Some((current, parent)) = queue.pop_front() {
-        if visited.contains(current) {
+        let is_visited = visited.get_mut(current).expect("Exists");
+        if *is_visited {
             continue;
         }
 
-        visited.insert(current);
+        *is_visited = true;
 
         parent.into_iter().for_each(|parent| {
-            paths
-                .entry(parent)
-                .or_insert_with(|| Vec::new())
-                .push(current)
+            let child: &mut Vec<usize> = paths.get_mut(parent).expect("exists");
+            child.push(current);
         });
 
         graph
             .get(current)
             .expect("Node exists")
             .into_iter()
-            .filter(|next| !visited.contains(next))
-            .for_each(|next| queue.push_back((next, Some(current))));
+            .filter(|next| !visited.get(**next).expect("exists"))
+            .for_each(|next| queue.push_back((*next, Some(current))));
     }
 
-    Node::from_map_and_root(&paths, start)
+    paths
 }
 
-struct Node<'a> {
-    current: &'a Arc<str>,
-    children: Vec<Node<'a>>,
+fn calculate_weighted_paths(
+    paths: &Vec<Vec<usize>>,
+    root: usize,
+    edges: &mut HashMap<(usize, usize), usize>,
+) -> usize {
+    1 + paths
+        .get(root)
+        .expect("exists")
+        .into_iter()
+        .map(|child| {
+            let result = calculate_weighted_paths(paths, *child, edges);
+            let (e1, e2) = get_cononical_edge(&root, &child);
+            *edges.entry((*e1, *e2)).or_insert(0) += result;
+
+            result
+        })
+        .sum::<usize>()
 }
 
-impl<'a> Node<'a> {
-    fn from_map_and_root(
-        map: &HashMap<&'a Arc<str>, Vec<&'a Arc<str>>>,
-        root: &'a Arc<str>,
-    ) -> Self {
-        let children = map
-            .get(root)
-            .map(|children| Either::Left(children.into_iter()))
-            .unwrap_or_else(|| Either::Right(empty()))
-            .map(|child| Node::from_map_and_root(map, child))
-            .collect();
-        Node {
-            current: root,
-            children,
-        }
-    }
-
-    fn calculate_weighted_paths(
-        &self,
-        map: &mut HashMap<(&'a Arc<str>, &'a Arc<str>), usize>,
-    ) -> usize {
-        1 + self
-            .children
-            .iter()
-            .map(|child| {
-                let result = child.calculate_weighted_paths(map);
-
-                map.insert(get_cononical_edge(&self.current, &child.current), result);
-
-                result
-            })
-            .sum::<usize>()
-    }
-}
-
-fn get_cononical_edge<'a>(a: &'a Arc<str>, b: &'a Arc<str>) -> (&'a Arc<str>, &'a Arc<str>) {
+fn get_cononical_edge<'a, T: Ord>(a: &'a T, b: &'a T) -> (&'a T, &'a T) {
     if a < b {
         (a, b)
     } else {
@@ -199,38 +205,44 @@ fn get_cononical_edge<'a>(a: &'a Arc<str>, b: &'a Arc<str>) -> (&'a Arc<str>, &'
     }
 }
 
-fn is_graph_disjoint(graph: &HashMap<Arc<str>, HashSet<Arc<str>>>) -> Option<(usize, usize)> {
-    let first = graph.keys().next().expect("At least one");
-    let mut visited = HashSet::new();
+fn is_graph_disjoint(graph: &Vec<Vec<usize>>) -> Option<(usize, usize)> {
+    let first = 0;
+    let mut visited = vec![false; graph.len()];
     let mut queue = VecDeque::new();
     queue.push_back(first);
 
     while let Some(next) = queue.pop_front() {
-        if visited.contains(next) {
+        let is_visited = visited.get_mut(next).expect("Exists");
+        if *is_visited {
             continue;
         }
-        visited.insert(next);
+
+        *is_visited = true;
 
         graph
             .get(next)
             .expect("Exists")
             .into_iter()
-            .for_each(|value| queue.push_back(value));
+            .for_each(|value| queue.push_back(*value));
     }
 
-    if graph.len() != visited.len() {
-        Some((visited.len(), graph.len() - visited.len()))
+    let visited_count = visited.into_iter().filter(|visited| *visited).count();
+
+    if graph.len() != visited_count {
+        Some((visited_count, graph.len() - visited_count))
     } else {
         None
     }
 }
 
-fn break_connection(
-    mut graph: HashMap<Arc<str>, HashSet<Arc<str>>>,
-    first: &Arc<str>,
-    second: &Arc<str>,
-) -> HashMap<Arc<str>, HashSet<Arc<str>>> {
-    graph.get_mut(first).expect("Exists").remove(second);
-    graph.get_mut(second).expect("Exists").remove(first);
+fn break_connection(mut graph: Vec<Vec<usize>>, first: usize, second: usize) -> Vec<Vec<usize>> {
+    graph
+        .get_mut(first)
+        .expect("Exists")
+        .retain(|a| a != &second);
+    graph
+        .get_mut(second)
+        .expect("Exists")
+        .retain(|a| a != &first);
     graph
 }
