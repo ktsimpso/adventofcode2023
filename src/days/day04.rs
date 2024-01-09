@@ -5,7 +5,7 @@ use crate::libs::{
 };
 use chumsky::{error::Rich, extra, primitive::just, IterParser, Parser};
 use clap::{Args, ValueEnum};
-use std::{cell::LazyCell, collections::HashMap};
+use std::cell::LazyCell;
 
 pub const DAY_04: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     Box::new(
@@ -77,18 +77,19 @@ impl Problem<Input, CommandLineArguments> for Day04 {
         match arguments.rules {
             GameRules::Score => input.0.into_iter().map(|card| count_points(&card)).sum(),
             GameRules::Cards => {
-                let mut card_map = HashMap::new();
+                let mut cards_count = vec![0; input.0.len()];
                 input.0.into_iter().for_each(|card| {
                     let matches = count_matches(&card);
-                    let current_card_count = card_map.entry(card.number).or_insert(0usize);
+                    let current_card_count = cards_count.get_mut(card.number - 1).expect("exists");
                     *current_card_count += 1;
                     let current_card_count = *current_card_count;
 
-                    for i in 1..=matches {
-                        *card_map.entry(card.number + i).or_insert(0usize) += current_card_count;
-                    }
+                    (0..matches).into_iter().for_each(|i| {
+                        *cards_count.get_mut(card.number + i).expect("exists") +=
+                            current_card_count;
+                    })
                 });
-                card_map.values().sum()
+                cards_count.into_iter().sum()
             }
         }
     }
