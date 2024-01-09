@@ -12,7 +12,7 @@ use chumsky::{
 };
 use clap::Args;
 use num_integer::Integer;
-use std::{cell::LazyCell, collections::BTreeMap};
+use std::{cell::LazyCell, collections::BTreeMap, rc::Rc};
 use tap::Tap;
 
 pub const DAY_08: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
@@ -36,7 +36,7 @@ pub const DAY_08: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
 #[derive(Debug)]
 struct Input {
     directions: Vec<Direction>,
-    map: BTreeMap<String, (String, String)>,
+    map: BTreeMap<Rc<str>, (Rc<str>, Rc<str>)>,
 }
 
 #[derive(Clone, Debug)]
@@ -58,7 +58,7 @@ impl StringParse for Input {
             .then(token)
             .then_ignore(just(")"))
             .map(|((key, v1), v2): ((&str, &str), &str)| {
-                (key.to_string(), (v1.to_string(), v2.to_string()))
+                (Rc::from(key), (Rc::from(v1), Rc::from(v2)))
             });
         direction
             .repeated()
@@ -101,11 +101,11 @@ impl Problem<Input, CommandLineArguments> for Day08 {
                 .cloned()
                 .collect::<Vec<_>>()
         } else {
-            vec!["AAA".to_string()]
+            vec![Rc::from("AAA")]
         };
 
         let initial = current.clone();
-        let mut found = initial.iter().map(|_| false).collect::<Vec<_>>();
+        let mut found = vec![false; initial.len()];
         let mut found_step = Vec::new();
         let mut steps = 0usize;
 
