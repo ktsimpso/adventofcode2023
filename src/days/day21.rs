@@ -219,11 +219,11 @@ impl<'a> Iterator for WalkGarden<'a> {
 
 impl<'a> WalkGarden<'a> {
     fn new(field: &'a Array2<Terrain>) -> Self {
-        let max_y = field.dim().1 - 1;
-        let max_x = field.dim().0 - 1;
+        let max_x = field.dim().1 - 1;
+        let max_y = field.dim().0 - 1;
         let start = field
             .indexed_iter()
-            .find_map(|((x, y), plot)| {
+            .find_map(|((y, x), plot)| {
                 if plot == &Terrain::Start {
                     Some(ExpandiblePoint {
                         x,

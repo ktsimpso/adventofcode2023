@@ -53,8 +53,8 @@ impl Problem<Input, CommandLineArguments> for Day17 {
     type Output = usize;
 
     fn run(input: Input, arguments: &CommandLineArguments) -> Self::Output {
-        let max_y = input.0.dim().1 - 1;
-        let max_x = input.0.dim().0 - 1;
+        let max_x = input.0.dim().1 - 1;
+        let max_y = input.0.dim().0 - 1;
 
         let max_straight = arguments.max;
         let min_straight = arguments.min;
@@ -77,7 +77,7 @@ impl Problem<Input, CommandLineArguments> for Day17 {
         });
 
         let mut result = None;
-        let mut visited = Array3::from_elem((max_x + 1, max_y + 1, 4), false);
+        let mut visited = Array3::from_elem((max_y + 1, max_x + 1, 4), false);
 
         while let Some(((direction, point), priority)) = queue.pop() {
             if point.x == max_x && point.y == max_y {
@@ -86,7 +86,7 @@ impl Problem<Input, CommandLineArguments> for Day17 {
             }
 
             let has_visited = visited
-                .get_mut((point.x, point.y, direction_to_index(&direction)))
+                .get_mut((point.y, point.x, direction_to_index(&direction)))
                 .expect("Exists");
             if *has_visited {
                 continue;
@@ -97,7 +97,7 @@ impl Problem<Input, CommandLineArguments> for Day17 {
             get_valid_moves(direction, &point, &min_straight, &max_straight, &input.0)
                 .filter(|(direction, point, _)| {
                     !visited
-                        .get((point.x, point.y, direction_to_index(direction)))
+                        .get((point.y, point.x, direction_to_index(direction)))
                         .expect("Exists")
                 })
                 .for_each(|(direction, point, heat)| {
@@ -180,5 +180,5 @@ fn get_valid_direction<'a>(
 }
 
 fn get_heat(point: &BoundedPoint, pool: &Array2<usize>) -> Option<usize> {
-    pool.get((point.x, point.y)).copied()
+    pool.get((point.y, point.x)).copied()
 }

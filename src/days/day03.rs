@@ -1,7 +1,7 @@
 use crate::libs::{
     cli::{CliProblem, Command},
     graph::BoundedPoint,
-    parse::{parse_digit, parse_table, StringParse},
+    parse::{parse_digit, parse_table2, StringParse},
     problem::Problem,
 };
 use chumsky::{
@@ -12,9 +12,11 @@ use chumsky::{
 };
 use clap::{Args, ValueEnum};
 use itertools::Itertools;
+use ndarray::Array2;
 use std::{
     cell::LazyCell,
     collections::{BTreeSet, HashMap},
+    rc::Rc,
 };
 
 pub const DAY_03: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
@@ -39,16 +41,16 @@ pub const DAY_03: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     )
 });
 
-struct Input(Vec<Vec<Item>>);
+struct Input(Array2<Item>);
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Item {
     Number(char),
     Symbol(Symbol),
     Blank,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Symbol {
     Star,
     Ampersand,
@@ -80,7 +82,7 @@ impl StringParse for Input {
             .map(|value| Item::Number(value))
             .or(symbols.map(|symbol| Item::Symbol(symbol)))
             .or(just(".").to(Item::Blank));
-        parse_table(item).map(Input)
+        parse_table2(item).map(Input)
     }
 }
 
@@ -102,8 +104,9 @@ impl Problem<Input, CommandLineArguments> for Day03 {
     type Output = usize;
 
     fn run(input: Input, arguments: &CommandLineArguments) -> Self::Output {
-        let max_y = input.0.len() - 1;
-        let max_x = input.0.first().map(|row| row.len()).unwrap_or(0) - 1;
+        let max_x = input.0.dim().1 - 1;
+        let max_y = input.0.dim().0 - 1;
+
         let part_numbers = find_numbers(&input.0, max_y, max_x)
             .into_iter()
             .filter(|numbers| {
@@ -122,14 +125,13 @@ impl Problem<Input, CommandLineArguments> for Day03 {
                 let part_map = part_numbers
                     .into_iter()
                     .fold(HashMap::new(), |mut acc, parts| {
-                        parts.iter().into_iter().for_each(|part| {
+                        let parts = Rc::new(parts);
+                        parts.iter().for_each(|part| {
                             acc.insert(*part, parts.clone());
                         });
                         acc
                     });
-                let stars = find_stars(&input.0, max_y, max_x);
-                stars
-                    .into_iter()
+                find_stars(&input.0, max_y, max_x)
                     .filter_map(|star| {
                         let adjacent_numbers = star
                             .into_iter_radial_adjacent()
@@ -156,13 +158,13 @@ impl Problem<Input, CommandLineArguments> for Day03 {
     }
 }
 
-fn find_numbers(items: &Vec<Vec<Item>>, max_y: usize, max_x: usize) -> Vec<Vec<BoundedPoint>> {
+fn find_numbers(items: &Array2<Item>, max_y: usize, max_x: usize) -> Vec<Vec<BoundedPoint>> {
     items
+        .rows()
         .into_iter()
         .enumerate()
         .flat_map(|(y, row)| {
-            row.into_iter()
-                .enumerate()
+            row.indexed_iter()
                 .group_by(|(_, item)| match item {
                     Item::Number(_) => true,
                     _ => false,
@@ -184,9 +186,10 @@ fn find_numbers(items: &Vec<Vec<Item>>, max_y: usize, max_x: usize) -> Vec<Vec<B
         .collect()
 }
 
-fn adjacent_to_symbol(point: &BoundedPoint, items: &Vec<Vec<Item>>) -> bool {
+fn adjacent_to_symbol(point: &BoundedPoint, items: &Array2<Item>) -> bool {
     point.into_iter_radial_adjacent().any(|adjacent| {
-        get_value_from_item(&adjacent, items)
+        items
+            .get((adjacent.y, adjacent.x))
             .into_iter()
             .any(|value| match value {
                 Item::Symbol(_) => true,
@@ -195,11 +198,11 @@ fn adjacent_to_symbol(point: &BoundedPoint, items: &Vec<Vec<Item>>) -> bool {
     })
 }
 
-fn combine_numbers(numbers: &Vec<BoundedPoint>, items: &Vec<Vec<Item>>) -> usize {
+fn combine_numbers(numbers: &Vec<BoundedPoint>, items: &Array2<Item>) -> usize {
     usize::from_str_radix(
         &numbers
             .into_iter()
-            .filter_map(|number| get_value_from_item(number, items))
+            .filter_map(|number| items.get((number.y, number.x)))
             .filter_map(|number| match number {
                 Item::Number(value) => Some(value),
                 _ => None,
@@ -210,26 +213,18 @@ fn combine_numbers(numbers: &Vec<BoundedPoint>, items: &Vec<Vec<Item>>) -> usize
     .expect("Valid int")
 }
 
-fn get_value_from_item(point: &BoundedPoint, items: &Vec<Vec<Item>>) -> Option<Item> {
+fn find_stars<'a>(
+    items: &'a Array2<Item>,
+    max_y: usize,
+    max_x: usize,
+) -> impl Iterator<Item = BoundedPoint> + 'a {
     items
-        .get(point.y)
-        .and_then(|row| row.get(point.x).map(|value| *value))
-}
-
-fn find_stars(items: &Vec<Vec<Item>>, max_y: usize, max_x: usize) -> Vec<BoundedPoint> {
-    items
-        .into_iter()
-        .enumerate()
-        .flat_map(|(y, row)| {
-            row.into_iter()
-                .enumerate()
-                .filter_map(move |(x, value)| match value {
-                    Item::Symbol(symbol) => match symbol {
-                        Symbol::Star => Some(BoundedPoint { x, y, max_x, max_y }),
-                        _ => None,
-                    },
-                    _ => None,
-                })
+        .indexed_iter()
+        .filter_map(move |((y, x), value)| match value {
+            Item::Symbol(symbol) => match symbol {
+                Symbol::Star => Some(BoundedPoint { x, y, max_x, max_y }),
+                _ => None,
+            },
+            _ => None,
         })
-        .collect()
 }
