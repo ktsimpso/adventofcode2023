@@ -1,12 +1,13 @@
 use crate::libs::{
     cli::{CliProblem, Command},
     graph::BoundedPoint,
-    parse::{parse_table, StringParse},
+    parse::{parse_table2, StringParse},
     problem::Problem,
 };
 use chumsky::{error::Rich, extra, primitive::just, Parser};
 use clap::Args;
 use itertools::Itertools;
+use ndarray::Array2;
 use std::{
     cell::LazyCell,
     cmp::{max, min},
@@ -32,7 +33,7 @@ pub const DAY_11: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     )
 });
 
-struct Input(Vec<Vec<SpaceTime>>);
+struct Input(Array2<SpaceTime>);
 
 #[derive(Clone, PartialEq, Eq)]
 enum SpaceTime {
@@ -45,7 +46,7 @@ impl StringParse for Input {
         let space_time = just(".")
             .to(SpaceTime::Space)
             .or(just("#").to(SpaceTime::Galaxy));
-        parse_table(space_time).map(Input)
+        parse_table2(space_time).map(Input)
     }
 }
 
@@ -64,8 +65,8 @@ impl Problem<Input, CommandLineArguments> for Day11 {
         let expansion_rate = arguments.expansion_rate - 1;
         let empty_rows = find_empty_rows(&input.0);
         let empty_columns = find_empty_columns(&input.0);
-        let max_y = input.0.len() - 1;
-        let max_x = input.0.first().map(|row| row.len()).unwrap_or(0) - 1;
+        let max_x = input.0.dim().1 - 1;
+        let max_y = input.0.dim().0 - 1;
 
         let galaxies = find_galaxies(&input.0, max_x, max_y);
 
@@ -100,42 +101,30 @@ impl Problem<Input, CommandLineArguments> for Day11 {
     }
 }
 
-fn find_galaxies(
-    space_time: &Vec<Vec<SpaceTime>>,
-    max_x: usize,
-    max_y: usize,
-) -> Vec<BoundedPoint> {
+fn find_galaxies(space_time: &Array2<SpaceTime>, max_x: usize, max_y: usize) -> Vec<BoundedPoint> {
     space_time
-        .into_iter()
-        .enumerate()
-        .flat_map(|(y, row)| {
-            row.into_iter()
-                .enumerate()
-                .filter(|(_, space)| space == &&SpaceTime::Galaxy)
-                .map(move |(x, _)| BoundedPoint { x, y, max_x, max_y })
-        })
+        .indexed_iter()
+        .filter(|(_, space)| space == &&SpaceTime::Galaxy)
+        .map(move |((y, x), _)| BoundedPoint { x, y, max_x, max_y })
         .collect()
 }
 
-fn find_empty_rows(space_time: &Vec<Vec<SpaceTime>>) -> Vec<usize> {
+fn find_empty_rows(space_time: &Array2<SpaceTime>) -> Vec<usize> {
     space_time
-        .iter()
+        .rows()
+        .into_iter()
         .enumerate()
         .filter(|(_, row)| row.into_iter().all(|space| space == &SpaceTime::Space))
         .map(|(y, _)| y)
-        .rev()
         .collect()
 }
 
-fn find_empty_columns(space_time: &Vec<Vec<SpaceTime>>) -> Vec<usize> {
+fn find_empty_columns(space_time: &Array2<SpaceTime>) -> Vec<usize> {
     space_time
-        .iter()
-        .flat_map(|row| row.into_iter().enumerate())
-        .into_group_map()
+        .columns()
         .into_iter()
-        .filter(|(_, column)| column.into_iter().all(|space| space == &&SpaceTime::Space))
+        .enumerate()
+        .filter(|(_, column)| column.into_iter().all(|space| space == &SpaceTime::Space))
         .map(|(x, _)| x)
-        .sorted()
-        .rev()
         .collect()
 }
