@@ -105,8 +105,8 @@ fn find_groupings(condition_record: ConditionRecord) -> usize {
         None,
     );
     let result = count_valid_states(
-        &condition_record.springs.as_slice(),
-        &condition_record.key.as_slice(),
+        condition_record.springs.as_slice(),
+        condition_record.key.as_slice(),
         0,
         &mut cache,
     );
@@ -125,7 +125,7 @@ fn count_valid_states(
     {
         Some(result) => *result,
         None => {
-            let result = if let Some(next) = remaining.get(0) {
+            let result = if let Some(next) = remaining.first() {
                 match next {
                     SpringCondition::Operational => calculate_operational_spring(
                         remaining,
@@ -167,7 +167,7 @@ fn count_valid_states(
             *cache
                 .get_mut((remaining.len(), remaining_key.len(), current_key_count))
                 .expect("exists") = Some(result);
-            return result;
+            result
         }
     }
 }
@@ -180,7 +180,7 @@ fn calculate_operational_spring(
 ) -> usize {
     if current_key_count == 0 {
         count_valid_states(&remaining[1..], remaining_key, current_key_count, cache)
-    } else if let Some(key) = remaining_key.get(0) {
+    } else if let Some(key) = remaining_key.first() {
         if current_key_count == *key {
             count_valid_states(&remaining[1..], &remaining_key[1..], 0, cache)
         } else {
@@ -198,7 +198,7 @@ fn calculate_broken_spring(
     cache: &mut Array3<Option<usize>>,
 ) -> usize {
     let new_current_key_count = current_key_count + 1;
-    if let Some(key) = remaining_key.get(0) {
+    if let Some(key) = remaining_key.first() {
         if new_current_key_count > *key {
             0
         } else {

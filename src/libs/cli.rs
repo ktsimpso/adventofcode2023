@@ -109,7 +109,7 @@ where
     }
 }
 
-pub static PART_NAMES: [&'static str; 2] = ["part1", "part2"];
+pub static PART_NAMES: [&str; 2] = ["part1", "part2"];
 
 impl<I, A, P> Command for CliProblem<I, A, P>
 where
@@ -122,10 +122,10 @@ where
             .iter()
             .enumerate()
             .map(|(i, _)| (PART_NAMES[i], i))
-            .find_map(|(name, part)| args.subcommand_matches(&name).map(|_| self.run_part(part)))
+            .find_map(|(name, part)| args.subcommand_matches(name).map(|_| self.run_part(part)))
             .unwrap_or_else(|| {
                 self.run_with_file_and_args(
-                    &args.get_one::<PathBuf>("file").expect("File is required"),
+                    args.get_one::<PathBuf>("file").expect("File is required"),
                     &A::parse_output(args),
                     "custom",
                 )

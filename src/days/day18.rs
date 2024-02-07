@@ -11,7 +11,6 @@ use chumsky::{
     Parser,
 };
 use clap::Args;
-use itertools;
 use itertools::Itertools;
 use std::{cell::LazyCell, cmp::min, collections::HashMap, iter::once};
 
@@ -158,8 +157,8 @@ impl Problem<Input, CommandLineArguments> for Day18 {
             });
 
         let (min_y, max_y) = all_points
-            .iter()
-            .map(|(point, _)| point.y)
+            .keys()
+            .map(|point| point.y)
             .minmax()
             .into_option()
             .expect("At least one");
@@ -171,11 +170,9 @@ impl Problem<Input, CommandLineArguments> for Day18 {
             let mut in_loop = false;
             let significant_row = significant_rows.get(&current_row);
             let row_points = significant_row.into_iter().flat_map(|row| {
-                row.into_iter().flat_map(|(p1, p2)| {
-                    once((p1.x, all_points.get(&p1).expect("Pipe Exists").clone())).chain(once((
-                        p2.x,
-                        all_points.get(&p2).expect("Pipe Exists").clone(),
-                    )))
+                row.iter().flat_map(|(p1, p2)| {
+                    once((p1.x, *all_points.get(p1).expect("Pipe Exists")))
+                        .chain(once((p2.x, *all_points.get(p2).expect("Pipe Exists"))))
                 })
             });
 
@@ -184,7 +181,7 @@ impl Problem<Input, CommandLineArguments> for Day18 {
                 .map(|(x, column)| {
                     (
                         x,
-                        column.into_iter().find(|(first, second)| {
+                        column.iter().find(|(first, second)| {
                             first.y < current_row && second.y > current_row
                         }),
                     )
@@ -192,7 +189,7 @@ impl Problem<Input, CommandLineArguments> for Day18 {
                 .filter_map(|(x, column)| column.map(|c| (x, c)))
                 .map(|(x, _)| (*x, Pipe::Vertical))
                 .chain(row_points)
-                .sorted_by(|(x1, _), (x2, _)| x1.cmp(&x2))
+                .sorted_by(|(x1, _), (x2, _)| x1.cmp(x2))
                 .collect::<Vec<_>>();
 
             let row_count =
@@ -239,7 +236,7 @@ impl Problem<Input, CommandLineArguments> for Day18 {
                 min(
                     significant_columns
                         .values()
-                        .flat_map(|column| column.into_iter())
+                        .flat_map(|column| column.iter())
                         .filter_map(|(low, high)| {
                             if low.y < current_row && high.y > current_row {
                                 Some(high.y)
@@ -316,27 +313,19 @@ fn calculate_point_information(
 
     match previous.direction {
         PointDirection::Up => {
-            let column = significant_columns
-                .entry(previous_point.x)
-                .or_insert_with(|| Vec::new());
+            let column = significant_columns.entry(previous_point.x).or_default();
             column.push((current_point, *previous_point));
         }
         PointDirection::Down => {
-            let column = significant_columns
-                .entry(previous_point.x)
-                .or_insert_with(|| Vec::new());
+            let column = significant_columns.entry(previous_point.x).or_default();
             column.push((*previous_point, current_point));
         }
         PointDirection::Left => {
-            let row = significant_rows
-                .entry(previous_point.y)
-                .or_insert_with(|| Vec::new());
+            let row = significant_rows.entry(previous_point.y).or_default();
             row.push((current_point, *previous_point));
         }
         PointDirection::Right => {
-            let row = significant_rows
-                .entry(previous_point.y)
-                .or_insert_with(|| Vec::new());
+            let row = significant_rows.entry(previous_point.y).or_default();
             row.push((*previous_point, current_point));
         }
         _ => unreachable!(),

@@ -130,7 +130,7 @@ impl Problem<Input, CommandLineArguments> for Day14 {
                         let first = fields.get(&field).expect("exists");
                         let cycle_length = second - first;
                         let new_target = first + ((n - second - 1) % cycle_length);
-                        score(&indexed_field.get(new_target).expect("exists"))
+                        score(indexed_field.get(new_target).expect("exists"))
                     }
                     _ => score(&field),
                 }
@@ -204,10 +204,7 @@ fn fall<'a, T>(
     T: FnMut((usize, &mut RockField)),
 {
     dimension
-        .group_by(|patch| match patch {
-            RockField::Rock => false,
-            _ => true,
-        })
+        .group_by(|patch| !matches!(patch, RockField::Rock))
         .into_iter()
         .filter(|(moving, _)| *moving)
         .map(|(_, section)| section.collect::<Vec<_>>())

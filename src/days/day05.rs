@@ -109,6 +109,7 @@ impl StringParse for Input {
     }
 }
 
+#[allow(clippy::needless_lifetimes)] // false positive
 fn parse_map<'a>(
     map_name: &'a str,
 ) -> impl Parser<'a, &'a str, Vec<MapValue>, extra::Err<Rich<'a, char>>> {
@@ -205,12 +206,9 @@ impl Problem<Input, CommandLineArguments> for Day05 {
     }
 }
 
-fn map_destination_ranged_from_source_range(
-    source: Range,
-    source_map: &Vec<MapValue>,
-) -> Vec<Range> {
+fn map_destination_ranged_from_source_range(source: Range, source_map: &[MapValue]) -> Vec<Range> {
     // this works because source_map is sorted by the source range
-    let (remaining, mut result) = source_map.into_iter().fold(
+    let (remaining, mut result) = source_map.iter().fold(
         (Some(source), Vec::new()),
         |(range, mut acc), destination_range| match range {
             Some(source) => {

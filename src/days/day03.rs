@@ -79,8 +79,8 @@ impl StringParse for Input {
             just("-").to(Symbol::Minus),
         ));
         let item = parse_digit()
-            .map(|value| Item::Number(value))
-            .or(symbols.map(|symbol| Item::Symbol(symbol)))
+            .map(Item::Number)
+            .or(symbols.map(Item::Symbol))
             .or(just(".").to(Item::Blank));
         parse_table2(item).map(Input)
     }
@@ -111,7 +111,7 @@ impl Problem<Input, CommandLineArguments> for Day03 {
             .into_iter()
             .filter(|numbers| {
                 numbers
-                    .into_iter()
+                    .iter()
                     .any(|number| adjacent_to_symbol(number, &input.0))
             })
             .collect::<Vec<_>>();
@@ -149,8 +149,8 @@ impl Problem<Input, CommandLineArguments> for Day03 {
                     .map(|matched_numbers| {
                         matched_numbers
                             .into_iter()
-                            .map(|number| combine_numbers(&number, &input.0))
-                            .fold(1, |acc, number| acc * number)
+                            .map(|number| combine_numbers(number, &input.0))
+                            .product::<usize>()
                     })
                     .sum()
             }
@@ -165,10 +165,7 @@ fn find_numbers(items: &Array2<Item>, max_y: usize, max_x: usize) -> Vec<Vec<Bou
         .enumerate()
         .flat_map(|(y, row)| {
             row.indexed_iter()
-                .group_by(|(_, item)| match item {
-                    Item::Number(_) => true,
-                    _ => false,
-                })
+                .group_by(|(_, item)| matches!(item, Item::Number(_)))
                 .into_iter()
                 .filter_map(|(key, group)| {
                     if key {
@@ -191,40 +188,34 @@ fn adjacent_to_symbol(point: &BoundedPoint, items: &Array2<Item>) -> bool {
         items
             .get((adjacent.y, adjacent.x))
             .into_iter()
-            .any(|value| match value {
-                Item::Symbol(_) => true,
-                _ => false,
-            })
+            .any(|value| matches!(value, Item::Symbol(_)))
     })
 }
 
-fn combine_numbers(numbers: &Vec<BoundedPoint>, items: &Array2<Item>) -> usize {
-    usize::from_str_radix(
-        &numbers
-            .into_iter()
-            .filter_map(|number| items.get((number.y, number.x)))
-            .filter_map(|number| match number {
-                Item::Number(value) => Some(value),
-                _ => None,
-            })
-            .collect::<String>(),
-        10,
-    )
-    .expect("Valid int")
+fn combine_numbers(numbers: &[BoundedPoint], items: &Array2<Item>) -> usize {
+    numbers
+        .iter()
+        .filter_map(|number| items.get((number.y, number.x)))
+        .filter_map(|number| match number {
+            Item::Number(value) => Some(value),
+            _ => None,
+        })
+        .collect::<String>()
+        .parse::<usize>()
+        .expect("Valid int")
 }
 
-fn find_stars<'a>(
-    items: &'a Array2<Item>,
+fn find_stars(
+    items: &Array2<Item>,
     max_y: usize,
     max_x: usize,
-) -> impl Iterator<Item = BoundedPoint> + 'a {
+) -> impl Iterator<Item = BoundedPoint> + '_ {
     items
         .indexed_iter()
         .filter_map(move |((y, x), value)| match value {
-            Item::Symbol(symbol) => match symbol {
-                Symbol::Star => Some(BoundedPoint { x, y, max_x, max_y }),
-                _ => None,
-            },
+            Item::Symbol(symbol) if symbol == &Symbol::Star => {
+                Some(BoundedPoint { x, y, max_x, max_y })
+            }
             _ => None,
         })
 }

@@ -62,7 +62,7 @@ pub fn parse_isize_with_radix<'a>(
         .then(text::int(radix))
         .try_map(move |(negative, number), span| {
             let combined_number = match negative {
-                Some(_) => "-".to_string().tap_mut(|c| c.push_str(&number)),
+                Some(_) => "-".to_string().tap_mut(|c| c.push_str(number)),
                 _ => number.to_string(),
             };
             isize::from_str_radix(&combined_number, radix).map_err(|op| Rich::custom(span, op))
@@ -157,7 +157,7 @@ pub struct ParseError {
 impl ParseError {
     pub fn new<'a>(file: &'a str, errors: Vec<Rich<'a, char>>) -> Self {
         ParseError {
-            error: combine_parse_errors(&file, &errors),
+            error: combine_parse_errors(file, &errors),
         }
     }
 }
@@ -178,10 +178,10 @@ impl Error for ParseError {
     }
 }
 
-pub fn combine_parse_errors<'a>(source: &'a str, errors: &Vec<Rich<'a, char>>) -> String {
+pub fn combine_parse_errors<'a>(source: &'a str, errors: &[Rich<'a, char>]) -> String {
     errors
         .iter()
-        .map(|e| format_parse_error(source, &e))
+        .map(|e| format_parse_error(source, e))
         .join("\n")
 }
 

@@ -43,7 +43,7 @@ impl StringParse for Input {
                 let mut map = HashMap::new();
                 map.insert(
                     Rc::from(key),
-                    values.clone().into_iter().map(|s| Rc::from(s)).collect(),
+                    values.clone().into_iter().map(Rc::from).collect(),
                 );
                 values.clone().into_iter().fold(map, |mut acc, value| {
                     acc.insert(Rc::from(value), HashSet::from_iter(once(Rc::from(key))));
@@ -56,7 +56,7 @@ impl StringParse for Input {
                     HashMap::new(),
                     |mut acc: HashMap<Rc<str>, HashSet<Rc<str>>>, map| {
                         map.into_iter().for_each(|(key, value)| {
-                            let entry = acc.entry(key).or_insert_with(|| HashSet::new());
+                            let entry = acc.entry(key).or_default();
                             let result = entry.union(&value).cloned().collect();
                             *entry = result;
                         });
@@ -79,24 +79,17 @@ impl Problem<Input, CommandLineArguments> for Day25 {
     fn run(input: Input, _arguments: &CommandLineArguments) -> Self::Output {
         let encoded = encode_graph(&input.0);
         let graph = (0..encoded.len())
-            .into_iter()
             .par_bridge()
             .map(|key| (key, find_all_shortest_paths(key, &encoded)))
-            .fold(
-                || HashMap::new(),
-                |mut edges, (key, tree)| {
-                    calculate_weighted_paths(&tree, key, &mut edges);
-                    edges
-                },
-            )
-            .reduce(
-                || HashMap::new(),
-                |mut a, b| {
-                    b.into_iter()
-                        .for_each(|(key, value)| *a.entry(key).or_insert(0) += value);
-                    a
-                },
-            )
+            .fold(HashMap::new, |mut edges, (key, tree)| {
+                calculate_weighted_paths(&tree, key, &mut edges);
+                edges
+            })
+            .reduce(HashMap::new, |mut a, b| {
+                b.into_iter()
+                    .for_each(|(key, value)| *a.entry(key).or_insert(0) += value);
+                a
+            })
             .into_iter()
             .sorted_by(|(_, a), (_, b)| b.cmp(a))
             .take(3)
@@ -121,7 +114,7 @@ fn encode_graph(graph: &HashMap<Rc<str>, HashSet<Rc<str>>>) -> Vec<Vec<usize>> {
                 largest_index += 1;
             }
 
-            values.into_iter().for_each(|key| {
+            values.iter().for_each(|key| {
                 if !map.contains_key(key) {
                     let key_value = largest_index;
                     map.insert(key, key_value);
@@ -135,10 +128,10 @@ fn encode_graph(graph: &HashMap<Rc<str>, HashSet<Rc<str>>>) -> Vec<Vec<usize>> {
 
     let mut result = vec![Vec::new(); str_to_usize.len()];
 
-    graph.into_iter().for_each(|(key, values)| {
+    graph.iter().for_each(|(key, values)| {
         let new_key = *str_to_usize.get(key).expect("exists");
         let new_values = values
-            .into_iter()
+            .iter()
             .map(|key| *str_to_usize.get(key).expect("Exists"))
             .collect();
 
@@ -148,7 +141,7 @@ fn encode_graph(graph: &HashMap<Rc<str>, HashSet<Rc<str>>>) -> Vec<Vec<usize>> {
     result
 }
 
-fn find_all_shortest_paths<'a>(start: usize, graph: &'a Vec<Vec<usize>>) -> Vec<Vec<usize>> {
+fn find_all_shortest_paths(start: usize, graph: &Vec<Vec<usize>>) -> Vec<Vec<usize>> {
     let mut visited = vec![false; graph.len()];
     let mut paths: Vec<Vec<usize>> = vec![Vec::new(); graph.len()];
     let mut queue = VecDeque::new();
@@ -170,7 +163,7 @@ fn find_all_shortest_paths<'a>(start: usize, graph: &'a Vec<Vec<usize>>) -> Vec<
         graph
             .get(current)
             .expect("Node exists")
-            .into_iter()
+            .iter()
             .filter(|next| !visited.get(**next).expect("exists"))
             .for_each(|next| queue.push_back((*next, Some(current))));
     }
@@ -186,10 +179,10 @@ fn calculate_weighted_paths(
     1 + paths
         .get(root)
         .expect("exists")
-        .into_iter()
+        .iter()
         .map(|child| {
             let result = calculate_weighted_paths(paths, *child, edges);
-            let (e1, e2) = get_cononical_edge(&root, &child);
+            let (e1, e2) = get_cononical_edge(&root, child);
             *edges.entry((*e1, *e2)).or_insert(0) += result;
 
             result
@@ -222,7 +215,7 @@ fn is_graph_disjoint(graph: &Vec<Vec<usize>>) -> Option<(usize, usize)> {
         graph
             .get(next)
             .expect("Exists")
-            .into_iter()
+            .iter()
             .for_each(|value| queue.push_back(*value));
     }
 

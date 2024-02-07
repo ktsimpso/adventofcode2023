@@ -48,7 +48,7 @@ impl Hand {
             acc
         });
 
-        wild.into_iter().for_each(|wild_card| {
+        wild.iter().for_each(|wild_card| {
             card_set
                 .remove(wild_card)
                 .into_iter()
@@ -170,12 +170,11 @@ fn compare_hands(wild: Option<Card>) -> impl FnMut(&Hand, &Hand) -> Ordering {
                         (a, b) if a == wild_card && b == wild_card => Ordering::Equal,
                         (a, _) if a == wild_card => Ordering::Less,
                         (_, b) if b == wild_card => Ordering::Greater,
-                        (a, b) => a.cmp(&b),
+                        (a, b) => a.cmp(b),
                     })
-                    .unwrap_or_else(|| a.cmp(&b))
+                    .unwrap_or_else(|| a.cmp(b))
             })
-            .filter(|result| result != &Ordering::Equal)
-            .next()
+            .find(|result| result != &Ordering::Equal)
             .unwrap_or(Ordering::Equal),
         Ordering::Greater => Ordering::Greater,
     }

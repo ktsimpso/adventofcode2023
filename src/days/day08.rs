@@ -97,7 +97,7 @@ impl Problem<Input, CommandLineArguments> for Day08 {
             input
                 .map
                 .keys()
-                .filter(|key| key.ends_with("A"))
+                .filter(|key| key.ends_with('A'))
                 .cloned()
                 .collect::<Vec<_>>()
         } else {
@@ -107,9 +107,8 @@ impl Problem<Input, CommandLineArguments> for Day08 {
         let initial = current.clone();
         let mut found = vec![false; initial.len()];
         let mut found_step = Vec::new();
-        let mut steps = 0usize;
 
-        for direction in directions {
+        for (steps, direction) in directions.enumerate() {
             current = current
                 .into_iter()
                 .map(|c| {
@@ -120,22 +119,22 @@ impl Problem<Input, CommandLineArguments> for Day08 {
                     }
                 })
                 .collect::<Vec<_>>();
-            steps += 1;
+
             initial
                 .iter()
                 .zip(current.iter())
                 .zip(found.iter_mut())
                 .for_each(|((_, c), been_found)| {
-                    if c.ends_with("Z") && !*been_found {
+                    if c.ends_with('Z') && !*been_found {
                         *been_found = true;
-                        found_step.push(steps);
+                        found_step.push(steps + 1);
                     }
                 });
             if found.iter().all(|c| *c) {
                 break;
             }
 
-            if current.iter().all(|c| c.ends_with("Z")) {
+            if current.iter().all(|c| c.ends_with('Z')) {
                 break;
             }
         }

@@ -86,14 +86,12 @@ impl Problem<Input, CommandLineArguments> for Day13 {
                     reflection(&new_board, arguments.smudge)
                         .into_iter()
                         .map(|index| (index + 1) * 100)
-                        .filter(|new| new != &original_reflection_value)
-                        .next()
+                        .find(|new| new != &original_reflection_value)
                         .or_else(|| {
                             reflection(&transposed_board, arguments.smudge)
                                 .into_iter()
                                 .map(|index| index + 1)
-                                .filter(|new| new != &original_reflection_value)
-                                .next()
+                                .find(|new| new != &original_reflection_value)
                         })
                         .expect("Solution exists")
                 } else {
@@ -104,12 +102,12 @@ impl Problem<Input, CommandLineArguments> for Day13 {
     }
 }
 
-fn to_u64_rows(board: &Vec<Vec<Terrain>>) -> Vec<u64> {
+fn to_u64_rows(board: &[Vec<Terrain>]) -> Vec<u64> {
     board
-        .into_iter()
+        .iter()
         .map(|row| {
             row
-                .into_iter()
+                .iter()
                 .rev()
                 .enumerate()
                 .map(|(index, terrain)| match terrain {
@@ -121,9 +119,9 @@ fn to_u64_rows(board: &Vec<Vec<Terrain>>) -> Vec<u64> {
         .collect()
 }
 
-fn reflection(board: &Vec<u64>, smudge: bool) -> Vec<usize> {
+fn reflection(board: &[u64], smudge: bool) -> Vec<usize> {
     board
-        .into_iter()
+        .iter()
         .map_windows(|[first, second]| [**first, **second])
         .enumerate()
         .filter(|(_, [first, second])| {
@@ -137,33 +135,31 @@ fn reflection(board: &Vec<u64>, smudge: bool) -> Vec<usize> {
         .filter(|candidate| {
             let (left, right) = board.split_at(candidate + 1);
             let mut smudge_used = false;
-            left.into_iter()
-                .rev()
-                .zip(right.into_iter())
-                .all(|(left, right)| {
-                    let result = (left ^ right).count_ones();
-                    match (smudge, smudge_used, result) {
-                        (true, false, 1) => {
-                            smudge_used = true;
-                            true
-                        }
-                        _ => result == 0,
+            left.iter().rev().zip(right).all(|(left, right)| {
+                let result = (left ^ right).count_ones();
+                match (smudge, smudge_used, result) {
+                    (true, false, 1) => {
+                        smudge_used = true;
+                        true
                     }
-                })
+                    _ => result == 0,
+                }
+            })
         })
         .collect()
 }
 
-fn transpose_board(board: &Vec<Vec<Terrain>>) -> Vec<Vec<Terrain>> {
+fn transpose_board(board: &[Vec<Terrain>]) -> Vec<Vec<Terrain>> {
     board
-        .into_iter()
-        .flat_map(|row| row.into_iter().enumerate())
-        .fold(BTreeMap::new(), |mut acc, (x, value)| {
-            acc.entry(x)
-                .or_insert_with(|| Vec::new())
-                .push(value.clone());
-            acc
-        })
+        .iter()
+        .flat_map(|row| row.iter().enumerate())
+        .fold(
+            BTreeMap::new(),
+            |mut acc: BTreeMap<usize, Vec<Terrain>>, (x, value)| {
+                acc.entry(x).or_default().push(value.clone());
+                acc
+            },
+        )
         .into_iter()
         .sorted_by(|(x1, _), (x2, _)| x1.cmp(x2))
         .map(|(_, column)| column)

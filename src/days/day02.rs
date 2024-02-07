@@ -73,7 +73,7 @@ impl Problem<Input, CommandLineArguments> for Day02 {
                 .filter(|game| valid_game(game))
                 .map(|game| game.id)
                 .sum(),
-            GameStat::Power => input.map(|game| game_power(game)).sum(),
+            GameStat::Power => input.map(game_power).sum(),
         }
     }
 }

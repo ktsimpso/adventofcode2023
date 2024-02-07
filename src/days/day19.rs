@@ -85,9 +85,7 @@ impl StringParse for Input {
         let workflow_identifier = choice((
             just("A").to(WorkflowIdentifier::Accepted),
             just("R").to(WorkflowIdentifier::Rejected),
-            workflow_name
-                .clone()
-                .map(|s| WorkflowIdentifier::Workflow(s)),
+            workflow_name.clone().map(WorkflowIdentifier::Workflow),
         ));
         let condition = choice((
             just(">").to(Condition::GreaterThan),
@@ -298,7 +296,7 @@ impl Problem<Input, CommandLineArguments> for Day19 {
                     .conditional_workflows
                     .iter()
                     .find_map(|conditional_workflow| {
-                        process_conditional_workflow(&part, &conditional_workflow)
+                        process_conditional_workflow(&part, conditional_workflow)
                     })
                     .unwrap_or(workflow.default.clone());
 

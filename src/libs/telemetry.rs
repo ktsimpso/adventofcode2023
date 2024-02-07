@@ -74,7 +74,7 @@ pub struct DayReporter {
 impl Reporter for DayReporter {
     fn report(&mut self, spans: &[minitrace::prelude::SpanRecord]) {
         let results = spans
-            .into_iter()
+            .iter()
             .map(|span| (span.trace_id, span))
             .into_group_map()
             .into_values()
@@ -101,8 +101,8 @@ impl Reporter for DayReporter {
                     })
                     .expect("Total exists");
                 DayResult {
-                    day: day.to_owned(),
-                    run_value: run_value.to_owned(),
+                    day: day.clone(),
+                    run_value: run_value.clone(),
                     parse_time,
                     run_time,
                     total_time,

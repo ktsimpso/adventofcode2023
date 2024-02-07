@@ -141,39 +141,37 @@ fn fetch_and_save_samples(agent: &Agent, url: &Url, day: usize, force: bool) -> 
 
     let mut sample_index = 0;
 
-    html.select(&code_blocks_selector)
-        .into_iter()
-        .find_map(|code_block| {
-            code_block.text().last().and_then(|code_text| {
-                println!("Found:");
-                println!("{}", code_text);
-                Confirm::new()
-                    .with_prompt("Is this a sample?")
-                    .interact()
-                    .map_err(|e| anyhow::Error::new(e))
-                    .and_then(|is_sample| {
-                        if is_sample {
-                            let file_name = sample_file_from_index(day, sample_index);
-                            println!(
-                                "Saving file to {}",
-                                file_name.to_str().expect("path exists")
-                            );
+    html.select(&code_blocks_selector).find_map(|code_block| {
+        code_block.text().last().and_then(|code_text| {
+            println!("Found:");
+            println!("{}", code_text);
+            Confirm::new()
+                .with_prompt("Is this a sample?")
+                .interact()
+                .map_err(anyhow::Error::new)
+                .and_then(|is_sample| {
+                    if is_sample {
+                        let file_name = sample_file_from_index(day, sample_index);
+                        println!(
+                            "Saving file to {}",
+                            file_name.to_str().expect("path exists")
+                        );
 
-                            save_string_to_file(code_text, &file_name)?;
-                            sample_index += 1;
+                        save_string_to_file(code_text, &file_name)?;
+                        sample_index += 1;
 
-                            Confirm::new()
-                                .with_prompt("Are there more samples?")
-                                .interact()
-                                .map_err(|e| anyhow::Error::new(e))
-                        } else {
-                            Ok(true)
-                        }
-                    })
-                    .map(|next| if !next { Some(()) } else { None })
-                    .unwrap_or(None)
-            })
-        });
+                        Confirm::new()
+                            .with_prompt("Are there more samples?")
+                            .interact()
+                            .map_err(anyhow::Error::new)
+                    } else {
+                        Ok(true)
+                    }
+                })
+                .map(|next| if !next { Some(()) } else { None })
+                .unwrap_or(None)
+        })
+    });
 
     Ok(())
 }

@@ -1,7 +1,7 @@
 use crate::libs::{
     cli::{CliProblem, Command},
     graph::{BoundedPoint, PointDirection},
-    parse::{parse_table, StringParse},
+    parse::{parse_table2, StringParse},
     problem::Problem,
 };
 use chumsky::{
@@ -12,6 +12,7 @@ use chumsky::{
 };
 use clap::Args;
 use either::Either;
+use ndarray::Array2;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use std::{
     cell::LazyCell,
@@ -42,7 +43,7 @@ pub const DAY_16: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     )
 });
 
-struct Input(Vec<Vec<Contraption>>);
+struct Input(Array2<Contraption>);
 
 #[derive(Clone, Copy)]
 enum Contraption {
@@ -62,7 +63,7 @@ impl StringParse for Input {
             just("\\").to(Contraption::BackSlash),
             just("/").to(Contraption::ForwardSlash),
         ));
-        parse_table(contraption).map(Input)
+        parse_table2(contraption).map(Input)
     }
 }
 
@@ -82,45 +83,40 @@ impl Problem<Input, CommandLineArguments> for Day16 {
     type Output = usize;
 
     fn run(input: Input, arguments: &CommandLineArguments) -> Self::Output {
-        let max_y = input.0.len() - 1;
-        let max_x = input.0.first().map(|row| row.len()).unwrap_or(0) - 1;
+        let max_x = input.0.dim().1 - 1;
+        let max_y = input.0.dim().0 - 1;
 
         if arguments.all_directions {
-            Either::Left(input.0.iter().enumerate().flat_map(|(y, row)| {
-                row.into_iter()
-                    .enumerate()
-                    .flat_map(move |(x, _)| match (x, y) {
-                        (x, y) if x == 0 && y == 0 => vec![
-                            (BoundedPoint { x, y, max_x, max_y }, PointDirection::Right),
-                            (BoundedPoint { x, y, max_x, max_y }, PointDirection::Down),
-                        ],
-                        (x, y) if x == max_x && y == max_y => vec![
-                            (BoundedPoint { x, y, max_x, max_y }, PointDirection::Right),
-                            (BoundedPoint { x, y, max_x, max_y }, PointDirection::Up),
-                        ],
-                        (x, y) if x == 0 && y == max_y => vec![
-                            (BoundedPoint { x, y, max_x, max_y }, PointDirection::Right),
-                            (BoundedPoint { x, y, max_x, max_y }, PointDirection::Up),
-                        ],
-                        (x, y) if x == max_x && y == 0 => vec![
-                            (BoundedPoint { x, y, max_x, max_y }, PointDirection::Left),
-                            (BoundedPoint { x, y, max_x, max_y }, PointDirection::Down),
-                        ],
-                        (x, y) if x == 0 => {
-                            vec![(BoundedPoint { x, y, max_x, max_y }, PointDirection::Right)]
-                        }
-                        (x, y) if y == 0 => {
-                            vec![(BoundedPoint { x, y, max_x, max_y }, PointDirection::Down)]
-                        }
-                        (x, y) if x == max_x => {
-                            vec![(BoundedPoint { x, y, max_x, max_y }, PointDirection::Left)]
-                        }
-                        (x, y) if y == max_y => {
-                            vec![(BoundedPoint { x, y, max_x, max_y }, PointDirection::Up)]
-                        }
-                        _ => Vec::new(),
-                    })
-                    .into_iter()
+            Either::Left(input.0.indexed_iter().flat_map(|((y, x), _)| match (x, y) {
+                (x, y) if x == 0 && y == 0 => vec![
+                    (BoundedPoint { x, y, max_x, max_y }, PointDirection::Right),
+                    (BoundedPoint { x, y, max_x, max_y }, PointDirection::Down),
+                ],
+                (x, y) if x == max_x && y == max_y => vec![
+                    (BoundedPoint { x, y, max_x, max_y }, PointDirection::Right),
+                    (BoundedPoint { x, y, max_x, max_y }, PointDirection::Up),
+                ],
+                (x, y) if x == 0 && y == max_y => vec![
+                    (BoundedPoint { x, y, max_x, max_y }, PointDirection::Right),
+                    (BoundedPoint { x, y, max_x, max_y }, PointDirection::Up),
+                ],
+                (x, y) if x == max_x && y == 0 => vec![
+                    (BoundedPoint { x, y, max_x, max_y }, PointDirection::Left),
+                    (BoundedPoint { x, y, max_x, max_y }, PointDirection::Down),
+                ],
+                (x, y) if x == 0 => {
+                    vec![(BoundedPoint { x, y, max_x, max_y }, PointDirection::Right)]
+                }
+                (x, y) if y == 0 => {
+                    vec![(BoundedPoint { x, y, max_x, max_y }, PointDirection::Down)]
+                }
+                (x, y) if x == max_x => {
+                    vec![(BoundedPoint { x, y, max_x, max_y }, PointDirection::Left)]
+                }
+                (x, y) if y == max_y => {
+                    vec![(BoundedPoint { x, y, max_x, max_y }, PointDirection::Up)]
+                }
+                _ => Vec::new(),
             }))
         } else {
             Either::Right(once((
@@ -143,7 +139,7 @@ impl Problem<Input, CommandLineArguments> for Day16 {
 fn energized_tiles(
     initial_point: BoundedPoint,
     initial_direction: PointDirection,
-    area: &Vec<Vec<Contraption>>,
+    area: &Array2<Contraption>,
 ) -> usize {
     let mut queue = VecDeque::new();
     queue.push_back((initial_direction, initial_point));
@@ -153,7 +149,7 @@ fn energized_tiles(
         if visited.contains(&(point, current_direction)) {
             continue;
         }
-        visited.insert((point.clone(), current_direction.clone()));
+        visited.insert((point, current_direction));
         let contraption = get_contraption(&point, area).expect("Exists");
         forward_beam(point, current_direction, contraption)
             .into_iter()
@@ -281,7 +277,6 @@ fn forward_beam(
     }
 }
 
-fn get_contraption(point: &BoundedPoint, area: &Vec<Vec<Contraption>>) -> Option<Contraption> {
-    area.get(point.y)
-        .and_then(|row| row.get(point.x).map(|value| *value))
+fn get_contraption(point: &BoundedPoint, area: &Array2<Contraption>) -> Option<Contraption> {
+    area.get((point.y, point.x)).copied()
 }

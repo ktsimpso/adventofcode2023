@@ -65,9 +65,9 @@ impl Problem<Input, CommandLineArguments> for Day21 {
 
     fn run(input: Input, arguments: &CommandLineArguments) -> Self::Output {
         // TODO: make these channels and broadcast the original iterator
-        let garden_walk = WalkGarden::new(&input.0);
+        let mut garden_walk = WalkGarden::new(&input.0);
         if arguments.steps < input.0.dim().0 * 8 - (arguments.steps % input.0.dim().0) {
-            garden_walk.skip(arguments.steps).next()
+            garden_walk.nth(arguments.steps)
         } else {
             find_quadratic_cycle(garden_walk, arguments.steps, input.0.dim().0, 1)
         }
@@ -341,10 +341,10 @@ fn get_valid_transitions<'a>(
             }
             _ => unreachable!(),
         })
-        .filter(
-            |new_point| match field.get((new_point.x, new_point.y)).expect("Exists") {
-                Terrain::Rock => false,
-                _ => true,
-            },
-        )
+        .filter(|new_point| {
+            !matches!(
+                field.get((new_point.x, new_point.y)).expect("Exists"),
+                Terrain::Rock
+            )
+        })
 }

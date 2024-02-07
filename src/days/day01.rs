@@ -71,10 +71,7 @@ impl Problem<Input, CommandLineArguments> for Day01 {
         ];
 
         let charset = if arguments.words {
-            digits
-                .into_iter()
-                .chain(words.into_iter())
-                .collect::<Vec<_>>()
+            digits.into_iter().chain(words).collect::<Vec<_>>()
         } else {
             digits
         };
@@ -100,7 +97,11 @@ impl Problem<Input, CommandLineArguments> for Day01 {
                     .map(|(_, value)| value)
                     .take(1);
 
-                usize::from_str_radix(&first.chain(second).join(""), 10).expect("Valid integer")
+                first
+                    .chain(second)
+                    .join("")
+                    .parse::<usize>()
+                    .expect("Valid integer")
             })
             .sum()
     }

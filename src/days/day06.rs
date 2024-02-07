@@ -45,7 +45,7 @@ impl StringParse for Input {
             .map(|(times, distances)| {
                 times
                     .into_iter()
-                    .zip(distances.into_iter())
+                    .zip(distances)
                     .map(|(time, distance)| Race { time, distance })
                     .collect()
             })
@@ -81,9 +81,9 @@ impl Problem<Input, CommandLineArguments> for Day06 {
     }
 }
 
-fn merge_races(races: &Vec<Race>) -> Vec<Race> {
+fn merge_races(races: &[Race]) -> Vec<Race> {
     let (time, distance) = races
-        .into_iter()
+        .iter()
         .map(|race| (race.time.to_string(), race.distance.to_string()))
         .fold(
             ("".to_string(), "".to_string()),
@@ -94,8 +94,8 @@ fn merge_races(races: &Vec<Race>) -> Vec<Race> {
             },
         );
     vec![Race {
-        time: usize::from_str_radix(&time, 10).expect("Valid time"),
-        distance: usize::from_str_radix(&distance, 10).expect("Valid distance"),
+        time: time.parse::<usize>().expect("Valid time"),
+        distance: distance.parse::<usize>().expect("Valid distance"),
     }]
 }
 

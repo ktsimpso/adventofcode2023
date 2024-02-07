@@ -165,44 +165,34 @@ fn find_start_field(point: &BoundedPoint, area: &Array2<Field>) -> Field {
     let valid_up = &point
         .get_adjacent(&PointDirection::Up)
         .and_then(|next| get_field_from_area(&next, area))
-        .filter(|field| match field {
-            Field::Vertical => true,
-            Field::SouthEast => true,
-            Field::SouthWest => true,
-            _ => false,
-        })
+        .filter(|field| matches!(field, Field::Vertical | Field::SouthEast | Field::SouthWest))
         .is_some();
 
     let valid_down = &point
         .get_adjacent(&PointDirection::Down)
         .and_then(|next| get_field_from_area(&next, area))
-        .filter(|field| match field {
-            Field::Vertical => true,
-            Field::NorthEast => true,
-            Field::NorthWest => true,
-            _ => false,
-        })
+        .filter(|field| matches!(field, Field::Vertical | Field::NorthEast | Field::NorthWest))
         .is_some();
 
     let valid_left = &point
         .get_adjacent(&PointDirection::Left)
         .and_then(|next| get_field_from_area(&next, area))
-        .filter(|field| match field {
-            Field::Horizontal => true,
-            Field::NorthEast => true,
-            Field::SouthEast => true,
-            _ => false,
+        .filter(|field| {
+            matches!(
+                field,
+                Field::Horizontal | Field::NorthEast | Field::SouthEast
+            )
         })
         .is_some();
 
     let valid_right = &point
         .get_adjacent(&PointDirection::Right)
         .and_then(|next| get_field_from_area(&next, area))
-        .filter(|field| match field {
-            Field::Horizontal => true,
-            Field::NorthWest => true,
-            Field::SouthWest => true,
-            _ => false,
+        .filter(|field| {
+            matches!(
+                field,
+                Field::Horizontal | Field::NorthWest | Field::SouthWest
+            )
         })
         .is_some();
     match (valid_up, valid_down, valid_left, valid_right) {
@@ -236,7 +226,7 @@ fn get_valid_pipes(point: &BoundedPoint, area: &Array2<Field>) -> Vec<BoundedPoi
             .iter()
             .filter_map(|direction| {
                 point.get_adjacent(direction).filter(|other| {
-                    get_field_from_area(&other, area)
+                    get_field_from_area(other, area)
                         .filter(|field| {
                             field
                                 .valid_pipe_directions()

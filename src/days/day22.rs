@@ -213,12 +213,12 @@ fn fall_bricks(input: Vec<Brick>) -> (HashSet<Brick>, HashMap<usize, Vec<Brick>>
             let z_to_fused_blocks = &z_to_fused_blocks;
             let test_brick = &new_brick;
 
-            if (new_low_z..=new_high_z).into_iter().any(move |z| {
+            if (new_low_z..=new_high_z).any(move |z| {
                 z_to_fused_blocks
                     .get(&z)
                     .into_iter()
-                    .flat_map(|bricks| bricks)
-                    .any(|other_brick| test_brick.intersects(&other_brick))
+                    .flatten()
+                    .any(|other_brick| test_brick.intersects(other_brick))
             }) {
                 break;
             }
@@ -235,10 +235,10 @@ fn fall_bricks(input: Vec<Brick>) -> (HashSet<Brick>, HashMap<usize, Vec<Brick>>
             fall_count += 1;
         }
 
-        (low_z..=high_z).into_iter().for_each(move |z| {
+        (low_z..=high_z).for_each(move |z| {
             z_to_fused_blocks
                 .entry(z)
-                .or_insert_with(|| Vec::new())
+                .or_default()
                 .push(current.clone());
         });
     }
@@ -251,18 +251,18 @@ fn can_remove_brick(brick: &Brick, z_to_fused_blocks: &HashMap<usize, Vec<Brick>
     z_to_fused_blocks
         .get(&(high_z + 1))
         .into_iter()
-        .flat_map(|bricks| bricks)
+        .flatten()
         .filter(|brick| brick.z_range().0 == high_z + 1)
-        .filter(|top_brick| brick.is_adjacent(&top_brick))
+        .filter(|top_brick| brick.is_adjacent(top_brick))
         .all(|top_brick| {
             let (low_z, _) = top_brick.z_range();
             z_to_fused_blocks
                 .get(&(low_z - 1))
                 .into_iter()
-                .flat_map(|bricks| bricks)
+                .flatten()
                 .filter(|brick| brick.z_range().1 == low_z - 1)
                 .filter(|supporting_brick| supporting_brick != &brick)
-                .filter(|supporting_brick| top_brick.is_adjacent(&supporting_brick))
+                .filter(|supporting_brick| top_brick.is_adjacent(supporting_brick))
                 .count()
                 > 0
         })

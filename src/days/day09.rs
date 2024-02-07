@@ -91,9 +91,9 @@ impl Problem<Input, CommandLineArguments> for Day09 {
     }
 }
 
-fn map_sequence(sequence: &Vec<isize>) -> Vec<isize> {
+fn map_sequence(sequence: &[isize]) -> Vec<isize> {
     sequence
-        .into_iter()
+        .iter()
         .map_windows(|[first, second]| **second - **first)
         .collect()
 }

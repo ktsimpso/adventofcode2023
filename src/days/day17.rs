@@ -33,7 +33,7 @@ struct Input(Array2<usize>);
 impl StringParse for Input {
     fn parse<'a>() -> impl Parser<'a, &'a str, Self, extra::Err<Rich<'a, char>>> {
         let digit = parse_digit().to_slice().try_map(move |number: &str, span| {
-            usize::from_str_radix(number, 10).map_err(|op| Rich::custom(span, op))
+            number.parse::<usize>().map_err(|op| Rich::custom(span, op))
         });
         parse_table2(digit).map(Input)
     }
@@ -169,7 +169,7 @@ fn get_valid_direction<'a>(
             (Vec::new(), 0),
             |(mut acc, acc_heat), (index, point, heat)| {
                 let next_heat = acc_heat + heat;
-                acc.push((index, (direction.clone(), point, next_heat)));
+                acc.push((index, (direction, point, next_heat)));
                 (acc, next_heat)
             },
         )

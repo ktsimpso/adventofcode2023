@@ -97,7 +97,7 @@ struct Point {
 
 impl Point {
     fn get_xy_slope(&self, other: &Point) -> RBig {
-        RBig::from_parts_signed((&other.y - &self.y).into(), (&other.x - &self.x).into())
+        RBig::from_parts_signed(&other.y - &self.y, &other.x - &self.x)
     }
 }
 
@@ -285,26 +285,26 @@ fn find_line_intersection(
     } = &c.velocity;
 
     // Need to borrow to prevent cloning the big ints
-    let x1: &IBig = &x1;
-    let x2: &IBig = &x2;
-    let x3: &IBig = &x3;
-    let vx1: &IBig = &vx1;
-    let vx2: &IBig = &vx2;
-    let vx3: &IBig = &vx3;
+    let x1: &IBig = x1;
+    let x2: &IBig = x2;
+    let x3: &IBig = x3;
+    let vx1: &IBig = vx1;
+    let vx2: &IBig = vx2;
+    let vx3: &IBig = vx3;
 
-    let y1: &IBig = &y1;
-    let y2: &IBig = &y2;
-    let y3: &IBig = &y3;
-    let vy1: &IBig = &vy1;
-    let vy2: &IBig = &vy2;
-    let vy3: &IBig = &vy3;
+    let y1: &IBig = y1;
+    let y2: &IBig = y2;
+    let y3: &IBig = y3;
+    let vy1: &IBig = vy1;
+    let vy2: &IBig = vy2;
+    let vy3: &IBig = vy3;
 
-    let z1: &IBig = &z1;
-    let z2: &IBig = &z2;
-    let z3: &IBig = &z3;
-    let vz1: &IBig = &vz1;
-    let vz2: &IBig = &vz2;
-    let vz3: &IBig = &vz3;
+    let z1: &IBig = z1;
+    let z2: &IBig = z2;
+    let z3: &IBig = z3;
+    let vz1: &IBig = vz1;
+    let vz2: &IBig = vz2;
+    let vz3: &IBig = vz3;
 
     // Simple Combinations
     let dvx12 = &(vx1 - vx2);

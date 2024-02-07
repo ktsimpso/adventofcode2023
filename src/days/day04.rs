@@ -84,7 +84,7 @@ impl Problem<Input, CommandLineArguments> for Day04 {
                     *current_card_count += 1;
                     let current_card_count = *current_card_count;
 
-                    (0..matches).into_iter().for_each(|i| {
+                    (0..matches).for_each(|i| {
                         *cards_count.get_mut(card.number + i).expect("exists") +=
                             current_card_count;
                     })

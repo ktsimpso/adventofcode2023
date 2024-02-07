@@ -73,9 +73,7 @@ impl StringParse for Input {
 }
 
 fn parse_label<'a>() -> impl Parser<'a, &'a str, Label, extra::Err<Rich<'a, char>>> {
-    let equal = just("=")
-        .ignore_then(parse_usize())
-        .map(|value| Operation::Equal(value));
+    let equal = just("=").ignore_then(parse_usize()).map(Operation::Equal);
     let dash = just("-").to(Operation::Dash);
     let operation = equal.or(dash);
     parse_alphanumeric()
@@ -149,6 +147,6 @@ impl Problem<Input, CommandLineArguments> for Day15 {
 fn hash(input: &str) -> usize {
     input
         .as_bytes()
-        .into_iter()
+        .iter()
         .fold(0, |acc, char| ((acc + usize::from(*char)) * 17) % 256)
 }

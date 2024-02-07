@@ -24,7 +24,7 @@ use crate::libs::{
     problem::ProblemResult,
 };
 
-const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() -> Result<()> {
     let day_collector = Arc::new(Mutex::new(DayCollector::new()));

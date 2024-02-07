@@ -153,7 +153,7 @@ impl Problem<Input, CommandLineArguments> for Day20 {
                 .iter()
                 .filter(|output| conjunction_inputs.contains(*output))
                 .for_each(|output| {
-                    let inputs = acc.entry(output).or_insert_with(|| Vec::new());
+                    let inputs: &mut Vec<_> = acc.entry(output).or_default();
                     inputs.push(module.name.clone());
                 });
             acc
@@ -184,7 +184,7 @@ impl Problem<Input, CommandLineArguments> for Day20 {
                 let mut high_pulse_count = 0;
                 let mut target_pulses = BTreeMap::new();
 
-                (0..*presses).into_iter().for_each(|_| {
+                (0..*presses).for_each(|_| {
                     let (low, high) = push_button(
                         &modules,
                         &mut conjuntion_memory,
@@ -214,7 +214,7 @@ impl Problem<Input, CommandLineArguments> for Day20 {
                         conjunction_inputs
                             .get(&module.name)
                             .expect("exists")
-                            .into_iter()
+                            .iter()
                             .for_each(|input| {
                                 target_pulses.insert(input.clone(), false);
                             })
@@ -246,13 +246,13 @@ impl Problem<Input, CommandLineArguments> for Day20 {
                         conjunction_inputs
                             .get(conjunction)
                             .expect("Exists")
-                            .into_iter()
+                            .iter()
                             .all(|value| conjunction_input_times.contains_key(value))
                             .then(|| {
                                 conjunction_inputs
                                     .get(&conjunction)
                                     .expect("Exists")
-                                    .into_iter()
+                                    .iter()
                                     .map(|input| {
                                         conjunction_input_times.get(input).expect("Exists")
                                     })
@@ -289,15 +289,11 @@ fn push_button(
 
         match modules.get(&module_name) {
             Some(module) => {
-                match module.module_type {
-                    ModuleType::Conjunction => {
-                        if let Some(target) = target_pulses.get_mut(&source)
-                            && pulse == Pulse::High
-                        {
-                            *target = true;
-                        }
-                    }
-                    _ => (),
+                if module.module_type == ModuleType::Conjunction
+                    && let Some(target) = target_pulses.get_mut(&source)
+                    && pulse == Pulse::High
+                {
+                    *target = true;
                 }
 
                 process_pulse(pulse, source, module, conjuntion_memory, flip_flop_memory)

@@ -1,7 +1,7 @@
 use crate::libs::{
     cli::{CliProblem, Command},
     graph::{BoundedPoint, PointDirection},
-    parse::{parse_table, StringParse},
+    parse::{parse_table2, StringParse},
     problem::Problem,
 };
 use chumsky::{
@@ -11,6 +11,7 @@ use chumsky::{
     Parser,
 };
 use clap::Args;
+use ndarray::Array2;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{
     cell::{LazyCell, Ref, RefCell, RefMut},
@@ -41,7 +42,7 @@ pub const DAY_23: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     )
 });
 
-struct Input(Vec<Vec<Field>>);
+struct Input(Array2<Field>);
 
 #[derive(Debug, Clone)]
 enum Field {
@@ -63,7 +64,7 @@ impl StringParse for Input {
             just("v").to(Field::SouthSlope),
             just("<").to(Field::WestSlope),
         ));
-        parse_table(field).map(Input)
+        parse_table2(field).map(Input)
     }
 }
 
@@ -82,12 +83,11 @@ impl Problem<Input, CommandLineArguments> for Day23 {
     type Output = usize;
 
     fn run(input: Input, arguments: &CommandLineArguments) -> Self::Output {
-        let max_y = input.0.len() - 1;
-        let max_x = input.0.first().map(|row| row.len()).unwrap_or(0) - 1;
+        let max_x = input.0.dim().1 - 1;
+        let max_y = input.0.dim().0 - 1;
         let start = input
             .0
-            .get(0)
-            .expect("Row exists")
+            .row(0)
             .into_iter()
             .enumerate()
             .find_map(|(x, tile)| match tile {
@@ -102,8 +102,7 @@ impl Problem<Input, CommandLineArguments> for Day23 {
             .expect("Start exists");
         let end = input
             .0
-            .get(max_y)
-            .expect("Row exists")
+            .row(max_y)
             .into_iter()
             .enumerate()
             .find_map(|(x, tile)| match tile {
@@ -135,7 +134,7 @@ impl Problem<Input, CommandLineArguments> for Day23 {
 fn sparse_graph(
     start: &BoundedPoint,
     end: &BoundedPoint,
-    terrain: &Vec<Vec<Field>>,
+    terrain: &Array2<Field>,
     slippery: &bool,
 ) -> HashMap<BoundedPoint, BTreeSet<(BoundedPoint, usize)>> {
     let mut results = HashMap::new();
@@ -168,22 +167,22 @@ fn sparse_graph(
                         .collect::<Vec<_>>();
                     match next_points.len() {
                         1 => {
-                            current = *next_points.get(0).expect("Exists");
+                            current = *next_points.first().expect("Exists");
                         }
                         0 => {
                             if current == *end {
                                 results
                                     .entry(target)
-                                    .or_insert_with(|| BTreeSet::new())
-                                    .insert((current.clone(), count));
+                                    .or_insert_with(BTreeSet::new)
+                                    .insert((current, count));
                             }
                             break;
                         }
                         _ => {
                             results
                                 .entry(target)
-                                .or_insert_with(|| BTreeSet::new())
-                                .insert((current.clone(), count));
+                                .or_insert_with(BTreeSet::new)
+                                .insert((current, count));
                             queue.push_back(current);
                             break;
                         }
@@ -192,7 +191,7 @@ fn sparse_graph(
             });
     }
 
-    let mut current = end.clone();
+    let mut current = *end;
     let results = RefCell::new(results);
     let get_count =
         |results: Ref<HashMap<BoundedPoint, BTreeSet<_>>>, current: &BoundedPoint| -> usize {
@@ -204,7 +203,7 @@ fn sparse_graph(
     let filter_current = |mut results: RefMut<HashMap<BoundedPoint, BTreeSet<_>>>,
                           current: &BoundedPoint|
      -> BoundedPoint {
-        results
+        *results
             .iter_mut()
             .find(|(_, points)| {
                 points
@@ -216,7 +215,6 @@ fn sparse_graph(
                 key
             })
             .expect("Exists")
-            .clone()
     };
     while get_count(results.borrow(), &current) == 1 {
         current = filter_current(results.borrow_mut(), &current);
@@ -225,6 +223,7 @@ fn sparse_graph(
     results.into_inner()
 }
 
+#[allow(clippy::type_complexity)]
 fn encode_graph(
     sparse: &HashMap<BoundedPoint, BTreeSet<(BoundedPoint, usize)>>,
 ) -> (
@@ -238,14 +237,14 @@ fn encode_graph(
             |(mut map, mut largest_index): (BTreeMap<BoundedPoint, u64>, usize), (key, values)| {
                 if !map.contains_key(key) {
                     let key_value = 1u64 << largest_index;
-                    map.insert(key.clone(), key_value);
+                    map.insert(*key, key_value);
                     largest_index += 1;
                 }
 
-                values.into_iter().for_each(|(key, _)| {
+                values.iter().for_each(|(key, _)| {
                     if !map.contains_key(key) {
                         let key_value = 1u64 << largest_index;
-                        map.insert(key.clone(), key_value);
+                        map.insert(*key, key_value);
                         largest_index += 1;
                     }
                 });
@@ -256,11 +255,11 @@ fn encode_graph(
         .0;
 
     let result = sparse
-        .into_iter()
+        .iter()
         .map(|(key, values)| {
             let new_key = *point_to_u64.get(key).expect("exists");
             let new_values = values
-                .into_iter()
+                .iter()
                 .map(|(key, length)| (*point_to_u64.get(key).expect("Exists"), *length))
                 .collect();
 
@@ -307,7 +306,7 @@ fn longest_path(
         encoded
             .get(&current)
             .expect("Exists")
-            .into_iter()
+            .iter()
             .filter(|(new_point, _)| new_visited & new_point == 0)
             .filter_map(|(new_point, count)| {
                 longest_path(
@@ -326,7 +325,7 @@ fn longest_path(
 
 fn get_adjacent_tiles(
     point: &BoundedPoint,
-    terrain: &Vec<Vec<Field>>,
+    terrain: &Array2<Field>,
     slippery: &bool,
 ) -> Vec<BoundedPoint> {
     if *slippery {
@@ -355,17 +354,15 @@ fn get_adjacent_tiles(
         point.into_iter_cardinal_adjacent().collect::<Vec<_>>()
     }
     .into_iter()
-    .filter(
-        |new_point| match get_field_from_point(&new_point, terrain).expect("Exists") {
-            Field::Forest => false,
-            _ => true,
-        },
-    )
+    .filter(|new_point| {
+        !matches!(
+            get_field_from_point(new_point, terrain).expect("Exists"),
+            Field::Forest
+        )
+    })
     .collect()
 }
 
-fn get_field_from_point(point: &BoundedPoint, terrain: &Vec<Vec<Field>>) -> Option<Field> {
-    terrain
-        .get(point.y)
-        .and_then(|row| row.get(point.x).cloned())
+fn get_field_from_point(point: &BoundedPoint, terrain: &Array2<Field>) -> Option<Field> {
+    terrain.get((point.y, point.x)).cloned()
 }
