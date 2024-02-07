@@ -121,11 +121,19 @@ pub fn parse_table2<'a, T>(
     item_parser: impl Parser<'a, &'a str, T, extra::Err<Rich<'a, char>>>,
 ) -> impl Parser<'a, &'a str, Array2<T>, extra::Err<Rich<'a, char>>> {
     parse_table(item_parser).try_map(|items, span| {
-        let columns = items.first().expect("At least one row").len();
+        let columns = items.first().map_or(0, |row| row.len());
         let rows = items.len();
 
-        Array2::from_shape_vec((rows, columns), items.into_iter().flatten().collect())
-            .map_err(|op| Rich::custom(span, op))
+        Array2::from_shape_vec(
+            (rows, columns),
+            items
+                .into_iter()
+                .fold(Vec::with_capacity(rows * columns), |mut acc, row| {
+                    acc.extend(row);
+                    acc
+                }),
+        )
+        .map_err(|op| Rich::custom(span, op))
     })
 }
 

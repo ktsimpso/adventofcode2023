@@ -5,6 +5,7 @@ use clap::{
     builder::PathBufValueParser, Arg, ArgAction, ArgMatches, Args, Command as ClapCommand,
     FromArgMatches, ValueHint,
 };
+use minitrace::{collector::SpanContext, local::LocalSpan, Span};
 use tap::Tap;
 
 use super::{
@@ -38,7 +39,9 @@ where
 pub trait Command {
     fn run(&self, args: &ArgMatches) -> Result<ProblemResult>;
 
-    fn run_part(&self, part: &str) -> Result<ProblemResult>;
+    fn get_parts(&self) -> Vec<usize>;
+
+    fn run_part(&self, part: usize) -> Result<ProblemResult>;
 
     fn get_name(&self) -> &'static str;
 
@@ -83,7 +86,30 @@ where
         self.parts.push(Part { help, arg });
         self
     }
+
+    fn run_with_file_and_args(
+        &self,
+        file: &PathBuf,
+        args: &A,
+        run_value: &'static str,
+    ) -> Result<ProblemResult> {
+        let total_span = Span::root("run_part_total", SpanContext::random())
+            .with_properties(|| [("day", self.name), ("run_value", run_value)]);
+        let _total = total_span.set_local_parent();
+        file_to_string(file)
+            .map_err(|e| e.into())
+            .and_then(|f| {
+                let _parse = LocalSpan::enter_with_local_parent("parse_input");
+                StringParser::<I>::try_from(f)
+            })
+            .map(|input| {
+                let _run = LocalSpan::enter_with_local_parent("run_time");
+                P::run(input.0, args).into()
+            })
+    }
 }
+
+pub static PART_NAMES: [&'static str; 2] = ["part1", "part2"];
 
 impl<I, A, P> Command for CliProblem<I, A, P>
 where
@@ -95,50 +121,32 @@ where
         self.parts
             .iter()
             .enumerate()
-            .map(|(i, part)| (format!("part{}", i + 1), &part.arg))
-            .find_map(|(name, arg)| {
-                args.subcommand_matches(&name).map(|_| {
-                    StringParser::<I>::try_from(
-                        file_to_string(
-                            &PathBuf::new().tap_mut(|path| {
-                                path.push(format!("input/{}/input.txt", self.name))
-                            }),
-                        )
-                        .expect("Can read file"),
-                    )
-                    .map(|input| P::run(input.0, arg).into())
-                })
-            })
+            .map(|(i, _)| (PART_NAMES[i], i))
+            .find_map(|(name, part)| args.subcommand_matches(&name).map(|_| self.run_part(part)))
             .unwrap_or_else(|| {
-                StringParser::<I>::try_from(
-                    file_to_string(args.get_one::<PathBuf>("file").expect("File is required"))
-                        .expect("Can read file"),
+                self.run_with_file_and_args(
+                    &args.get_one::<PathBuf>("file").expect("File is required"),
+                    &A::parse_output(args),
+                    "custom",
                 )
-                .map(|input| P::run(input.0, &A::parse_output(args)).into())
             })
     }
 
-    fn run_part(&self, part: &str) -> Result<ProblemResult> {
+    fn get_parts(&self) -> Vec<usize> {
         self.parts
             .iter()
             .enumerate()
-            .map(|(i, part)| (format!("part{}", i + 1), &part.arg))
-            .find_map(|(name, arg)| {
-                if name == part {
-                    Some(
-                        StringParser::<I>::try_from(
-                            file_to_string(&PathBuf::new().tap_mut(|path| {
-                                path.push(format!("input/{}/input.txt", self.name))
-                            }))
-                            .expect("Can read file"),
-                        )
-                        .map(|input| P::run(input.0, arg).into()),
-                    )
-                } else {
-                    None
-                }
-            })
-            .expect("part exists")
+            .map(|(index, _)| index)
+            .collect()
+    }
+
+    fn run_part(&self, part_index: usize) -> Result<ProblemResult> {
+        let part = &self.parts[part_index];
+        self.run_with_file_and_args(
+            &PathBuf::new().tap_mut(|path| path.push(format!("input/{}/input.txt", self.name))),
+            &part.arg,
+            PART_NAMES[part_index],
+        )
     }
 
     fn get_name(&self) -> &'static str {
@@ -154,7 +162,7 @@ where
                 .arg(file_arg(self.file_help))
                 .args(A::get_args()),
             |command, (count, part)| {
-                command.subcommand(ClapCommand::new(format!("part{}", count + 1)).about(part.help))
+                command.subcommand(ClapCommand::new(PART_NAMES[count]).about(part.help))
             },
         )
     }

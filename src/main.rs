@@ -12,16 +12,29 @@ use days::{
     day01, day02, day03, day04, day05, day06, day07, day08, day09, day10, day11, day12, day13,
     day14, day15, day16, day17, day18, day19, day20, day21, day22, day23, day24, day25,
 };
+use libs::telemetry::{DayCollector, DayReporter};
+use minitrace::collector::Config;
 use std::{
     cell::LazyCell,
-    time::{Duration, Instant},
+    sync::{Arc, Mutex},
 };
 
-use crate::libs::{cli::Command, problem::ProblemResult};
+use crate::libs::{
+    cli::{Command, PART_NAMES},
+    problem::ProblemResult,
+};
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 fn main() -> Result<()> {
+    let day_collector = Arc::new(Mutex::new(DayCollector::new()));
+    minitrace::set_reporter(
+        DayReporter {
+            collector: day_collector.clone(),
+        },
+        Config::default(),
+    );
+
     let commands: Vec<(&str, LazyCell<Box<dyn Command>>)> = vec![
         day01::DAY_01,
         day02::DAY_02,
@@ -63,10 +76,9 @@ fn main() -> Result<()> {
 
     let all_days = commands.iter().flat_map(|(name, command)| {
         command
-            .get_subcommand()
-            .get_subcommands()
-            .filter(|subcommand| subcommand.get_name().starts_with("part"))
-            .map(|subcommand| (name.to_owned(), command, subcommand.get_name().to_owned()))
+            .get_parts()
+            .into_iter()
+            .map(|part_index| (name.to_owned(), command, part_index))
             .collect::<Vec<_>>()
     });
 
@@ -90,35 +102,18 @@ fn main() -> Result<()> {
             matches.subcommand_matches("all_days").map(|_| {
                 all_days
                     .map(|(day, command, part)| {
-                        println!("=============Running {:}, {:}=============", day, part);
-                        let now = Instant::now();
-                        let result = command.run_part(&part);
-                        let elapsed = now.elapsed();
-                        result.map(|r| (r, day, part, elapsed))
+                        println!(
+                            "=============Running {:}, {:}=============",
+                            day, PART_NAMES[part]
+                        );
+                        let result = command.run_part(part);
+                        result.map(|r| (r, day, part))
                     })
                     .collect::<Result<Vec<_>>>()
                     .map(|results| {
-                        results.into_iter().fold(
-                            Duration::ZERO,
-                            |acc, (result, day, part, elapsed)| {
-                                let time_color = match elapsed {
-                                    x if x <= Duration::from_millis(5) => "\x1b[92m",
-                                    x if x <= Duration::from_millis(20) => "\x1b[32m",
-                                    x if x <= Duration::from_millis(40) => "\x1b[93m",
-                                    x if x <= Duration::from_millis(60) => "\x1b[33m",
-                                    x if x <= Duration::from_millis(100) => "\x1b[91m",
-                                    _ => "\x1b[31m",
-                                };
-                                println!(
-                                    "{} {} took {}{:>12?}\x1b[0m to run. Result: {}",
-                                    day, part, time_color, elapsed, result
-                                );
-                                acc + elapsed
-                            },
-                        )
-                    })
-                    .map(|total| {
-                        println!("Total Time: {:#?}", total);
+                        results.into_iter().for_each(|(result, day, part)| {
+                            println!("{} {} Result: {}", day, PART_NAMES[part], result);
+                        })
                     })
             })
         })
@@ -128,18 +123,18 @@ fn main() -> Result<()> {
                 .filter_map(|(name, command)| {
                     matches.subcommand_matches(name).map(|args| {
                         println!("=============Running {:}=============", command.get_name());
-                        let now = Instant::now();
-                        let result = command.run(args);
-                        let elapsed = now.elapsed();
-                        result.map(|r| (r, elapsed))
+                        command.run(args)
                     })
                 })
-                .collect::<Result<Vec<(ProblemResult, Duration)>>>()
+                .collect::<Result<Vec<ProblemResult>>>()
                 .map(|results| {
-                    results.into_iter().for_each(|(result, elapsed)| {
+                    results.into_iter().for_each(|result| {
                         println!("{}", result);
-                        println!("Took {:#?} to run", elapsed)
                     })
                 })
+        })
+        .map(|_| {
+            minitrace::flush();
+            day_collector.lock().expect("No panics").print_results()
         })
 }
