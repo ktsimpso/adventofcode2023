@@ -3,16 +3,12 @@ use crate::libs::{
     parse::{parse_alphanumeric, parse_lines, StringParse},
     problem::Problem,
 };
+use ahash::{AHashMap, AHashSet};
 use chumsky::{error::Rich, extra, primitive::just, IterParser, Parser};
 use clap::Args;
 use itertools::Itertools;
 use rayon::iter::{ParallelBridge, ParallelIterator};
-use std::{
-    cell::LazyCell,
-    collections::{HashMap, HashSet, VecDeque},
-    iter::once,
-    rc::Rc,
-};
+use std::{cell::LazyCell, collections::VecDeque, iter::once, rc::Rc};
 
 pub const DAY_25: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     Box::new(
@@ -28,7 +24,7 @@ pub const DAY_25: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     )
 });
 
-struct Input(HashMap<Rc<str>, HashSet<Rc<str>>>);
+struct Input(AHashMap<Rc<str>, AHashSet<Rc<str>>>);
 
 impl StringParse for Input {
     fn parse<'a>() -> impl Parser<'a, &'a str, Self, extra::Err<Rich<'a, char>>> {
@@ -37,24 +33,24 @@ impl StringParse for Input {
             .then(
                 parse_alphanumeric()
                     .separated_by(just(" "))
-                    .collect::<HashSet<_>>(),
+                    .collect::<Vec<_>>(),
             )
-            .map(|(key, values): (&str, HashSet<&str>)| {
-                let mut map = HashMap::new();
+            .map(|(key, values)| {
+                let mut map = AHashMap::new();
                 map.insert(
                     Rc::from(key),
                     values.clone().into_iter().map(Rc::from).collect(),
                 );
                 values.clone().into_iter().fold(map, |mut acc, value| {
-                    acc.insert(Rc::from(value), HashSet::from_iter(once(Rc::from(key))));
+                    acc.insert(Rc::from(value), AHashSet::from_iter(once(Rc::from(key))));
                     acc
                 })
             });
         parse_lines(component)
             .map(|maps| {
                 maps.into_iter().fold(
-                    HashMap::new(),
-                    |mut acc: HashMap<Rc<str>, HashSet<Rc<str>>>, map| {
+                    AHashMap::new(),
+                    |mut acc: AHashMap<Rc<str>, AHashSet<Rc<str>>>, map| {
                         map.into_iter().for_each(|(key, value)| {
                             let entry = acc.entry(key).or_default();
                             let result = entry.union(&value).cloned().collect();
@@ -81,11 +77,11 @@ impl Problem<Input, CommandLineArguments> for Day25 {
         let graph = (0..encoded.len())
             .par_bridge()
             .map(|key| (key, find_all_shortest_paths(key, &encoded)))
-            .fold(HashMap::new, |mut edges, (key, tree)| {
+            .fold(AHashMap::new, |mut edges, (key, tree)| {
                 calculate_weighted_paths(&tree, key, &mut edges);
                 edges
             })
-            .reduce(HashMap::new, |mut a, b| {
+            .reduce(AHashMap::new, |mut a, b| {
                 b.into_iter()
                     .for_each(|(key, value)| *a.entry(key).or_insert(0) += value);
                 a
@@ -104,10 +100,10 @@ impl Problem<Input, CommandLineArguments> for Day25 {
     }
 }
 
-fn encode_graph(graph: &HashMap<Rc<str>, HashSet<Rc<str>>>) -> Vec<Vec<usize>> {
+fn encode_graph(graph: &AHashMap<Rc<str>, AHashSet<Rc<str>>>) -> Vec<Vec<usize>> {
     let (str_to_usize, _) = graph.iter().fold(
-        (HashMap::new(), 0usize),
-        |(mut map, mut largest_index): (HashMap<&Rc<str>, usize>, usize), (key, values)| {
+        (AHashMap::new(), 0usize),
+        |(mut map, mut largest_index): (AHashMap<&Rc<str>, usize>, usize), (key, values)| {
             if !map.contains_key(key) {
                 let key_value = largest_index;
                 map.insert(key, key_value);
@@ -174,7 +170,7 @@ fn find_all_shortest_paths(start: usize, graph: &Vec<Vec<usize>>) -> Vec<Vec<usi
 fn calculate_weighted_paths(
     paths: &Vec<Vec<usize>>,
     root: usize,
-    edges: &mut HashMap<(usize, usize), usize>,
+    edges: &mut AHashMap<(usize, usize), usize>,
 ) -> usize {
     1 + paths
         .get(root)

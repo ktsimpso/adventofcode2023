@@ -5,7 +5,6 @@ use clap::{
     builder::PathBufValueParser, Arg, ArgAction, ArgMatches, Args, Command as ClapCommand,
     FromArgMatches, ValueHint,
 };
-use minitrace::{collector::SpanContext, local::LocalSpan, Span};
 use tap::Tap;
 
 use super::{
@@ -13,6 +12,9 @@ use super::{
     parse::{StringParse, StringParser},
     problem::{Problem, ProblemResult},
 };
+
+#[cfg(feature = "telemetry")]
+use super::telemetry::RunPartTelemetry;
 
 pub trait CliArgs {
     fn get_args() -> Vec<Arg>;
@@ -93,17 +95,18 @@ where
         args: &A,
         run_value: &'static str,
     ) -> Result<ProblemResult> {
-        let total_span = Span::root("run_part_total", SpanContext::random())
-            .with_properties(|| [("day", self.name), ("run_value", run_value)]);
-        let _total = total_span.set_local_parent();
+        #[cfg(feature = "telemetry")]
+        let run_part = RunPartTelemetry::new(self.name, run_value);
         file_to_string(file)
             .map_err(|e| e.into())
             .and_then(|f| {
-                let _parse = LocalSpan::enter_with_local_parent("parse_input");
+                #[cfg(feature = "telemetry")]
+                let _parse = run_part.time_parse();
                 StringParser::<I>::try_from(f)
             })
             .map(|input| {
-                let _run = LocalSpan::enter_with_local_parent("run_time");
+                #[cfg(feature = "telemetry")]
+                let _run = run_part.time_run();
                 P::run(input.0, args).into()
             })
     }

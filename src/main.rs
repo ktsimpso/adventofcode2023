@@ -1,39 +1,30 @@
 #![feature(lazy_cell)]
 #![feature(iter_map_windows)]
 #![feature(let_chains)]
-
 mod days;
 mod fetch_input;
 mod libs;
 
+use crate::libs::{
+    cli::{Command, PART_NAMES},
+    problem::ProblemResult,
+};
 use anyhow::Result;
 use clap::Command as ClapCommand;
 use days::{
     day01, day02, day03, day04, day05, day06, day07, day08, day09, day10, day11, day12, day13,
     day14, day15, day16, day17, day18, day19, day20, day21, day22, day23, day24, day25,
 };
-use libs::telemetry::{DayCollector, DayReporter};
-use minitrace::collector::Config;
-use std::{
-    cell::LazyCell,
-    sync::{Arc, Mutex},
-};
+use std::cell::LazyCell;
 
-use crate::libs::{
-    cli::{Command, PART_NAMES},
-    problem::ProblemResult,
-};
+#[cfg(feature = "telemetry")]
+use libs::telemetry::Telemetry;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() -> Result<()> {
-    let day_collector = Arc::new(Mutex::new(DayCollector::new()));
-    minitrace::set_reporter(
-        DayReporter {
-            collector: day_collector.clone(),
-        },
-        Config::default(),
-    );
+    #[cfg(feature = "telemetry")]
+    let _telemetry = Telemetry::init_telemetry();
 
     let commands: Vec<(&str, LazyCell<Box<dyn Command>>)> = vec![
         day01::DAY_01,
@@ -132,9 +123,5 @@ fn main() -> Result<()> {
                         println!("{}", result);
                     })
                 })
-        })
-        .map(|_| {
-            minitrace::flush();
-            day_collector.lock().expect("No panics").print_results()
         })
 }
