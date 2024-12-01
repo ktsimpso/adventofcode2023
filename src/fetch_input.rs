@@ -50,9 +50,9 @@ pub fn run(args: &ArgMatches) -> Result<()> {
     let arguments = CommandLineArguments::parse_output(args);
 
     let url = Url::parse("https://adventofcode.com")?;
-    let cookie = Cookie::build("session", arguments.session)
+    let cookie = Cookie::build(("session", arguments.session))
         .domain(url.domain().expect("Domain exists"))
-        .finish();
+        .build();
     let mut cookie_store = CookieStore::default();
     cookie_store.insert_raw(&cookie, &url)?;
     let agent = AgentBuilder::new().cookie_store(cookie_store).build();

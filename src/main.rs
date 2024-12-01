@@ -1,4 +1,3 @@
-#![feature(lazy_cell)]
 #![feature(iter_map_windows)]
 #![feature(let_chains)]
 mod days;

@@ -165,7 +165,7 @@ fn find_numbers(items: &Array2<Item>, max_y: usize, max_x: usize) -> Vec<Vec<Bou
         .enumerate()
         .flat_map(|(y, row)| {
             row.indexed_iter()
-                .group_by(|(_, item)| matches!(item, Item::Number(_)))
+                .chunk_by(|(_, item)| matches!(item, Item::Number(_)))
                 .into_iter()
                 .filter_map(|(key, group)| {
                     if key {

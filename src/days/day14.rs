@@ -204,7 +204,7 @@ fn fall<'a, T>(
     T: FnMut((usize, &mut RockField)),
 {
     dimension
-        .group_by(|patch| !matches!(patch, RockField::Rock))
+        .chunk_by(|patch| !matches!(patch, RockField::Rock))
         .into_iter()
         .filter(|(moving, _)| *moving)
         .map(|(_, section)| section.collect::<Vec<_>>())
